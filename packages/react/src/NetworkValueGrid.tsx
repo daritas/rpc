@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { RpcDataCache, networkScopeFromKey, type NetworkRpcDataProvider, type NetworkScopeRef, type RpcDataAnswer, type RpcQuestion } from '@source-repo/query'
-import type { DescribedAction, DescribedComponent } from './types.js'
-import { ValueGrid } from './ValueGrid.js'
+import { useSyncExternalStore } from 'react'
+import { networkResource, networkScopeFromKey, type NetworkRpcDataProvider, type NetworkScopeRef } from '@source-repo/query'
+import type { DescribedAction } from './types.js'
+import { DataProviderValueGrid } from './DataProviderValueGrid.js'
 import { networkMethodSelectionFromRowKey, type NetworkMethodSelection } from './network-method.js'
 
 /**
@@ -12,39 +12,6 @@ import { networkMethodSelectionFromRowKey, type NetworkMethodSelection } from '.
  * This component supplies only the synthetic component declaration and question addresses needed
  * to let that view ask a client-side `NetworkRpcDataProvider`.
  */
-
-const networkComponent = (columns: readonly string[]): DescribedComponent => ({
-    subscribers: 0,
-    resources: [
-        {
-            path: ['network'],
-            verbs: ['getChildren', 'getList', 'getOne'],
-            shape: 'tree',
-            label: 'Network',
-            row: {
-                kind: 'object',
-                fields: {
-                    peer: { type: { kind: 'string' } },
-                    namespace: { type: { kind: 'string' } },
-                    resource: { type: { kind: 'string' } },
-                    id: { type: { kind: 'string' } },
-                    value: { type: { kind: 'any' } }
-                },
-                additional: true
-            },
-            presentation: { defaultColumns: [...columns], representation: 'name' }
-        }
-    ]
-})
-
-const question = (method: RpcQuestion['method'], params: RpcQuestion['params']): RpcQuestion => ({
-    // Local-only addresses. The cache calls the adapter below rather than putting these on a link.
-    target: '$network-view',
-    namespace: '$network-view',
-    method,
-    resource: ['network'],
-    params
-})
 
 const CALL_METHOD: DescribedAction = { method: 'call', label: 'call', kinds: ['rpc.method'] }
 
@@ -63,26 +30,7 @@ export const NetworkValueGrid = ({
     /** Open the host's call form for a method-description row. */
     onCallMethod?: (method: NetworkMethodSelection) => void
 }) => {
-    const current = useRef(provider)
-    current.current = provider
-    const cache = useMemo(
-        () =>
-            new RpcDataCache({
-                ask: async ({ method, resource, params }) => (await current.current.dataRequest(method, resource, params ?? {})) as RpcDataAnswer
-            }),
-        []
-    )
-    const [preview, setPreview] = useState(true)
-    const [size, setSize] = useState(pageSize)
     const status = useSyncExternalStore(provider.subscribe, provider.getStatus, provider.getStatus)
-    const component = useMemo(() => networkComponent(status.columns), [status.columns])
-
-    useEffect(() => {
-        // A newly learnt description changes the local catalogue without changing any synthetic
-        // question address. Mark active questions so the already-open tree grows in place.
-        void cache.queryClient.invalidateQueries({ refetchType: 'active' })
-    }, [cache, provider])
-    useEffect(() => () => cache.close(), [cache])
 
     return (
         <div className="network-value-grid">
@@ -111,22 +59,12 @@ export const NetworkValueGrid = ({
                     )}
                 </div>
             )}
-            <ValueGrid
-                component={component}
-                scope={['network']}
-                cache={cache}
+            <DataProviderValueGrid
+                provider={provider}
+                resource={networkResource(status.columns)}
                 period={period}
-                preview={preview}
-                onPreview={setPreview}
-                pageSize={size}
-                onPageSize={setSize}
+                pageSize={pageSize}
                 onScope={(id) => onScope?.(id === undefined ? { kind: 'network' } : (networkScopeFromKey(id) ?? { kind: 'network' }))}
-                branchQuestion={(_resource, parentId, page, branchSize) => question('getChildren', { ...(parentId !== undefined ? { parentId } : {}), pagination: { page, pageSize: branchSize } })}
-                scopedQuestion={(_resource, under, page, rowPageSize, filter, sort) =>
-                    question('getList', { ...(under !== undefined ? { under } : {}), recursive: true, pagination: { page, pageSize: rowPageSize }, ...(filter ? { filter } : {}), ...(sort ? { sort } : {}) })
-                }
-                rowQuestion={(_resource, id) => question('getOne', { id })}
-                manyQuestion={(_resource, ids) => question('getMany', { ids })}
                 actionsFor={() => (onCallMethod ? [CALL_METHOD] : undefined)}
                 onAction={(_action, id) => {
                     const method = networkMethodSelectionFromRowKey(id)

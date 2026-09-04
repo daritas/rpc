@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { RpcServer, TransportEvent, type RpcGetListParams, type RpcGetManyParams, type RpcGetOneParams, type RpcGetOneResult, type RpcGetListResult, type RpcGetManyResult, type RpcSchema } from '@source-repo/rpc'
-import { NetworkDataProvider, NetworkRpcDataProvider, NetworkScopeCatalogue, RpcDataCache, rpcOnlineFrom } from '@source-repo/query'
+import { NetworkDataProvider, NetworkRpcDataProvider, NetworkScopeCatalogue, RpcDataCache, SECURITY_RESOURCE, SecurityDataProvider, rpcOnlineFrom } from '@source-repo/query'
 import { RpcOperations } from '@source-repo/rpc'
 import { pageName } from './peerName'
 import { Chat } from './Chat'
@@ -11,7 +11,7 @@ import { ChatMessage, ChatService } from './ChatService'
 import chatContract from './chat.types.json'
 import { ComponentPanel } from './ComponentPanel'
 import { ContextPanel } from './ContextPanel'
-import { asWatch, ConsoleService, holds, DescribedEvent, fetchConsoleName, NetworkProblem, NetworkValueGrid, PeerChange, PeerStructure, ServerDescription, socketPath, StreamedEvent, TappedFrame, typeText, withNode, type NetworkMethodSelection, type Watch, type WatchNode } from '@source-repo/react'
+import { asWatch, ConsoleService, DataProviderValueGrid, holds, DescribedEvent, fetchConsoleName, NetworkProblem, NetworkValueGrid, PeerChange, PeerStructure, ServerDescription, socketPath, StreamedEvent, TappedFrame, typeText, withNode, type NetworkMethodSelection, type Watch, type WatchNode } from '@source-repo/react'
 import { throttled } from '@source-repo/search'
 import { MethodPanel } from './MethodPanel'
 import { Operations } from './Operations'
@@ -298,7 +298,7 @@ type DataProxy = {
 }
 
 /** A console-wide destination that owns the main workspace. */
-type Workspace = 'network' | 'traffic' | 'problems' | 'presence' | 'operations'
+type Workspace = 'network' | 'security' | 'traffic' | 'problems' | 'presence' | 'operations'
 
 /** Detail and interaction for the scope selected in the Network workspace. */
 type SideTab = 'actions' | 'chat' | 'events'
@@ -408,6 +408,10 @@ export const App = () => {
     const networkCatalogue = useMemo(() => new NetworkScopeCatalogue(peers, known), [peers, known])
     const networkProvider = useMemo(() => new NetworkDataProvider({ catalogue: networkCatalogue, ask: (question) => data.fetch(question) }), [networkCatalogue, data])
     const networkResource = useMemo(() => new NetworkRpcDataProvider({ provider: networkProvider }), [networkProvider])
+    const securityResource = useMemo(
+        () => new SecurityDataProvider({ peers, descriptions: known, refused: describeRefusals }),
+        [peers, known, describeRefusals]
+    )
 
     // The network resource is the console's primary screen, so its structural catalogue is always
     // populated. Descriptions remain bounded by the shared throttler above.
@@ -721,7 +725,7 @@ export const App = () => {
                     )}
                 </div>
                 <nav className="console-nav" aria-label="console">
-                    {(['network', 'traffic', 'problems', 'presence', 'operations'] as const).map((name) => (
+                    {(['network', 'security', 'traffic', 'problems', 'presence', 'operations'] as const).map((name) => (
                         <button
                             key={name}
                             className={workspace === name ? 'peer selected' : 'peer'}
@@ -776,6 +780,15 @@ export const App = () => {
                             if (method.peer !== selected) void select(method.peer)
                         }}
                     />
+                </div>
+
+                <div className={workspace === 'security' ? 'network-workspace' : 'network-workspace hidden'}>
+                    <header className="peer-head network-head">
+                        <h1>Security</h1>
+                        <span className="muted">reported posture, explicit unknowns and derived findings across the visible network</span>
+                    </header>
+                    {peers.length === 0 && <p className="muted">Waiting for a peer to announce itself…</p>}
+                    <DataProviderValueGrid provider={securityResource} resource={SECURITY_RESOURCE} pageSize={50} />
                 </div>
 
                 {workspace === 'operations' && <Operations operations={operations} />}

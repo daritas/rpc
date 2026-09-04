@@ -1,3 +1,5 @@
+import type { RpcTransportDescription } from '@source-repo/rpc'
+
 /** The shapes the console receives from `msgrpc.describe()`, mirrored so the app stays self-contained. */
 
 export type TypeNode =
@@ -128,6 +130,8 @@ export interface ServerDescription {
     name: string
     version?: string
     validating: boolean
+    /** Stable, secret-free configuration posture; never credentials or live connection state. */
+    transports?: RpcTransportDescription[]
     namespaces: DescribedNamespace[]
     elevated?: DescribedElevation[]
     host?: {
