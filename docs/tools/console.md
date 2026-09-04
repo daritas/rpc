@@ -288,6 +288,49 @@ HMAC only. For Ed25519 or an HSM, build the console with the library's `startCon
 
 **Give it its own name on a busy network.** The default is unique per process, but a peer name maps to an MQTT client id and a broker allows one connection per id, so two consoles sharing a `--name` will disconnect each other.
 
+## Security
+
+**Security** is a top-level workspace, beside Network and the diagnostic workspaces. It uses the
+same scope-tree/value-grid as the rest of the console rather than a privileged security UI: the
+resource has branches for the current console link, findings, bounded events, and peers. Each peer
+then scopes its transports, elevations, and component authorities. Filtering by peer, category,
+evidence level, or finding uses the ordinary DataProvider path.
+
+Every displayed fact carries evidence. `link` means this console's transport established it;
+`peer` means the target reported it; `local` is a console-side inference; and `unknown` remains
+unknown. In particular, a peer reporting `tls-verified` is not silently promoted to something this
+console verified. There is deliberately no aggregate green “secure” badge.
+
+The **Current console link** row answers only who the browser is on its connection to this console.
+Calls from a method form have a second leg: the browser asks the console, and the console calls the
+target under the console's outbound identity. The method panel says so and shows the method's
+declared effect, retry semantics, authority requirement, current target elevations, and—when the
+target permits it—the live authority holder, expiry, and generation. Authorization remains unknown
+until call time because a target authorizer may depend on arguments or private policy.
+
+Authority is queried separately from `describe()`. Descriptions are structural and cacheable;
+leases change without changing a contract. A peer built before `msgrpc.authorities`, or one that
+refuses it, therefore shows authority as unknown rather than retaining an old holder. See
+[Command authority](../guide/authority.md#visible-to-everyone) for the target-side rules.
+
+The console also keeps the newest 200 security diagnostics. Today these are transport rejections
+and authorization or authority refusals made through the console relay. Rows contain bounded reason
+codes and addresses—not raw policy errors, credentials, keys, or token claims—and are available
+both live as `console.security` and as the `console.securityEvents()` history. This is an operational
+debugging buffer, not a complete or tamper-evident audit log.
+
+The executable acceptance fixture covers an anonymous browser link, authenticated viewer/operator/
+engineer/AI identities, name impersonation, the effect ladder, an expiring AI grant and elevation,
+authority contention and expiry, reconnect, signed MQTT, an unsigned MQTT rejection, and secret
+redaction from every browser-facing answer:
+
+```sh
+npm run test:security --workspace @source-repo/rpc-cli
+```
+
+It uses isolated Socket.IO ports and a unique MQTT prefix. The MQTT half skips when no broker is
+available; CI sets `SOURCE_RPC_REQUIRE_BROKER` so that half cannot disappear from a green CI run.
+
 ## Presence
 
 A peer that flaps is one of the commonest faults on a plant and the hardest to catch in the act. The console used to show it as a dot that changed colour and then forgot, so a device dropping every thirty seconds looked exactly like one that was simply up.

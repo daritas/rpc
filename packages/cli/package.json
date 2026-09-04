@@ -35,6 +35,7 @@
         "postbuild": "node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
         "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p web/tsconfig.json && tsc --noEmit -p web/tsconfig.test.json",
         "test": "npm run test:web && npm run clean && npm run build && ava",
+        "test:security": "npm run build && ava dist/security-fixture.test.js",
         "test:web": "vitest run --config web/vitest.config.ts",
         "prepack": "npm run clean && npm run build",
         "contract": "npm run contract:console && npm run contract:bus && npm run contract:chat && npm run contract:scripting && npm run contract:rpc",

@@ -35,3 +35,18 @@ A call from a non-holder is refused with the `NotInControl` code, naming the hol
 Who holds the unit rides every component snapshot as `authority: { holder?, expiresAt?, generation }` — readable state, not a secret. Every change — grant, renewal, takeover, release, expiry — emits `authorityChanged` on the component with a reason, because a snapshot can say who is in control now but not whether the last holder released or was expired out.
 
 The `generation` counter moves on every grant, takeover, release and expiry — but **not** on a holder's renewal, so extending a lease never fences out the holder's own queued commands. It is the within-epoch cousin of the topology layer's durable `ownerEpoch`; for fencing a call on *that*, see [the owner fence](./topology.md#the-owner-fence).
+
+An authorized observer can also ask the node-wide introspection surface for the current arbitration
+state:
+
+```typescript
+const introspection = await client.proxy<Introspection>('msgrpc', 'ovenServer')
+const authorities = await introspection.authorities()
+// [{ namespace: 'oven', methods: ['setMode'], authority: { holder, expiresAt, generation } }]
+```
+
+This query lists only components with methods that actually declare `requiresAuthority`. It stays
+separate from `describe()` because a lease is live state and a contract is structural cache data.
+The query is authorized like every other `msgrpc` method; refusal discloses no holder. The web
+console polls it only while the Security workspace or a relevant method form is visible, and shows
+unknown rather than a stale lease when it cannot be read.

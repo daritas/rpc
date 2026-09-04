@@ -160,6 +160,14 @@ Exercise successful and refused calls, stolen identity/name mismatch, expiry, au
 offline/stale peers, custom-authorizer unknown decisions, reconnect, transport changes and complete
 secret redaction from DOM, traffic, exports, errors and snapshots.
 
+The first cross-layer acceptance fixture is implemented in `packages/cli/src/security-fixture.test.ts`.
+It covers authenticated Socket.IO roles behind an anonymous browser link, the complete effect
+ladder, a bounded AI grant, an expiring elevation, authority contention and expiry, identity-name
+mismatch, reconnect, signed/unsigned MQTT, normalized console events, and token/signing-secret
+redaction from browser-facing RPC answers and snapshots. Remaining work in this phase is explicit
+offline/stale and transport-change scenarios plus rendered-DOM, traffic-export and JSONL-export
+redaction checks.
+
 ## Not now
 
 - browser forms for secrets or credentials;

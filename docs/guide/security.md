@@ -111,6 +111,36 @@ semantics, component-authority requirement, and current elevations, but its acce
 **unknown until call time**. A custom authorizer may also use parameters and private policy that
 introspection must not reveal.
 
+### Operational security visibility
+
+The web console projects security posture through an ordinary tree-shaped DataProvider. Its peer
+branches include transport posture, active elevations, and live component-authority leases; its
+network branches include conservative findings and the console's bounded security-event history.
+Every row retains the evidence vocabulary above, so self-reporting, link verification, local
+inference, and unavailable information never collapse into one trust claim.
+
+`msgrpc.authorities()` returns only components that declare authority-gated methods, together with
+those method names and their current `{ holder?, expiresAt?, generation }`. It is an authorized
+query and intentionally separate from `describe()`: callers denied this query learn no holder, and
+caches cannot turn an expired lease into current posture.
+
+The console normalizes transport rejections plus relayed `Unauthorized`, `Forbidden`, and
+`NotInControl` outcomes into safe reason codes. It retains 200 entries in memory and streams new
+ones. This history is useful for diagnosing a running network, but it is neither complete nor
+durable audit evidence; AI-grant and elevation decisions remain in their target-side hooks until an
+explicit safe event bridge is provided.
+
+Run the cross-layer acceptance fixture with:
+
+```sh
+npm run test:security --workspace @source-repo/rpc-cli
+```
+
+It verifies authenticated Socket.IO roles, the anonymous browser-to-console versus authenticated
+console-to-target boundary, expiring AI grants and elevations, authority contention and expiry,
+identity-name mismatch, reconnect, signed and unsigned MQTT, and absence of token/signing secrets
+from console-facing answers.
+
 ### The management surface
 
 `manageRpc` is **not exposed by default**. Enabling it publishes exactly one method, `createRpcInstance`, which constructs an instance of a class already passed to `exposeClass()`:
