@@ -304,8 +304,189 @@
             "kind": "string"
           },
           "optional": true
+        },
+        "security": {
+          "type": {
+            "kind": "ref",
+            "name": "RpcTransportSecurityDescription"
+          },
+          "optional": true
         }
       }
+    },
+    "RpcTransportSecurityDescription": {
+      "kind": "object",
+      "fields": {
+        "authentication": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "connection"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "credentials-presented"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        },
+        "encryption": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "local"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "tls"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "tls-verified"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "tls-unverified"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        },
+        "signing": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "bidirectional"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "outgoing"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "incoming-required"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        },
+        "relay": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "enabled"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "disabled"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "conditional"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "not-applicable"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "RpcSecurityEvidence": {
+      "kind": "union",
+      "options": [
+        {
+          "kind": "literal",
+          "value": "link"
+        },
+        {
+          "kind": "literal",
+          "value": "peer"
+        },
+        {
+          "kind": "literal",
+          "value": "local"
+        },
+        {
+          "kind": "literal",
+          "value": "unknown"
+        }
+      ]
     },
     "DescribedNamespace": {
       "kind": "object",

@@ -238,7 +238,18 @@ test('a peer that can do something dangerous says so, and says it loudest when n
     const described = await (await client.proxy<Introspection>('msgrpc')).describe()
 
     t.deepEqual(described.transports, [
-        { name: peer('elev3944'), protocol: 'socket.io', role: 'listen', endpoint: 'http://127.0.0.1:3944' }
+        {
+            name: peer('elev3944'),
+            protocol: 'socket.io',
+            role: 'listen',
+            endpoint: 'http://127.0.0.1:3944',
+            security: {
+                authentication: { value: 'none', evidence: 'peer' },
+                encryption: { value: 'none', evidence: 'peer' },
+                signing: { value: 'none', evidence: 'peer' },
+                relay: { value: 'enabled', evidence: 'peer' }
+            }
+        }
     ])
 
     // Gathered from what is exposed rather than from what somebody remembered to declare, which is

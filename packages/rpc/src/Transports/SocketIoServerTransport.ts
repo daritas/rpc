@@ -1,7 +1,18 @@
 import * as SocketIo from 'socket.io'
 import { createServer as createHttpServer, Server as HttpServer } from 'http'
 import { createServer as createHttpsServer, Server as HttpsServer, type ServerOptions as TlsServerOptions } from 'https'
-import { GenericModule, IGenericModule, Message, TransportEvent, type RelayedFrame, type RpcTransportDescription } from '../RPC/Core.js'
+import {
+    GenericModule,
+    IGenericModule,
+    Message,
+    publicTransportEndpoint,
+    reportedSecurityFact,
+    TransportEvent,
+    unknownSecurityFact,
+    type RelayedFrame,
+    type RpcTransportDescription,
+    type RpcTransportEncryption
+} from '../RPC/Core.js'
 import { FrameCodec, msgPackCodec } from '../RPC/Codec.js'
 import { RpcAuthenticator, RpcIdentity } from '../RPC/Auth.js'
 import { refuseDelivery } from '../RPC/Undeliverable.js'
@@ -185,11 +196,30 @@ export class SocketIoServerTransport extends GenericModule<Message, unknown, Mes
     }
 
     rpcDescription(): RpcTransportDescription {
+        const publishedEndpoint = this.describedEndpoint ? publicTransportEndpoint(this.describedEndpoint) : undefined
+        // URL.toString() adds '/' to a bare origin. Preserve the public description this transport
+        // already emitted before security posture was added; sanitizing must not change identity.
+        const endpoint = publishedEndpoint?.endsWith('/') && !this.describedEndpoint?.endsWith('/') ? publishedEndpoint.slice(0, -1) : publishedEndpoint
+        const encryption = this.describedEndpoint?.startsWith('https:')
+            ? reportedSecurityFact('tls')
+            : this.describedEndpoint?.startsWith('http:')
+              ? reportedSecurityFact('none')
+              : this.server instanceof HttpsServer
+                ? reportedSecurityFact('tls')
+                : this.server instanceof HttpServer
+                  ? reportedSecurityFact('none')
+                  : unknownSecurityFact<RpcTransportEncryption>()
         return {
             name: this.getName(),
             protocol: 'socket.io',
             role: 'listen',
-            ...(this.describedEndpoint ? { endpoint: this.describedEndpoint } : {})
+            ...(endpoint ? { endpoint } : {}),
+            security: {
+                authentication: reportedSecurityFact(this.authenticate ? 'connection' : 'none'),
+                encryption,
+                signing: reportedSecurityFact('none'),
+                relay: reportedSecurityFact(this.relay === false ? 'disabled' : typeof this.relay === 'function' ? 'conditional' : 'enabled')
+            }
         }
     }
 

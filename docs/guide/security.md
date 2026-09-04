@@ -65,6 +65,36 @@ An authorizer that throws denies the call. Failing open would turn a bug in the 
 
 `requireAuthenticatedPeers` defaults to true when `authenticate` is set, rejecting calls from peers no transport can vouch for with an `Unauthorized` error.
 
+## Describing transport posture without describing secrets
+
+When introspection is enabled, every built-in transport adds a `security` section to its
+`RpcTransportDescription`. It reports four separate facts: authentication, encryption, frame
+signing and relaying. Each carries its evidence as well as its value:
+
+```typescript
+{
+    authentication: { value: 'credentials-presented', evidence: 'peer' },
+    encryption: { value: 'tls-verified', evidence: 'peer' },
+    signing: { value: 'bidirectional', evidence: 'peer' },
+    relay: { value: 'not-applicable', evidence: 'peer' }
+}
+```
+
+The wording is intentionally narrow. A dialling peer can say it **presented** credentials; only the
+listener knows whether it required and accepted them. A listener can say it serves TLS; only a
+dialler can say it verified the certificate. MQTT broker credentials and Source RPC frame signing
+are separate because the first establishes access to a broker while the second establishes a frame's
+Source RPC identity end to end.
+
+These are configuration facts reported by the described peer, so their initial evidence is `peer`.
+A console may add what its own link verified as `link` evidence, but must never silently promote the
+peer's report. `{ evidence: 'unknown' }` and `{ value: 'none', evidence: 'peer' }` are different
+answers.
+
+Only closed posture values travel. Tokens, usernames, passwords, keys, certificates and arbitrary
+transport options do not. Public endpoints have user information, query and fragment stripped
+before they enter `describe()`.
+
 ### The management surface
 
 `manageRpc` is **not exposed by default**. Enabling it publishes exactly one method, `createRpcInstance`, which constructs an instance of a class already passed to `exposeClass()`:
@@ -102,4 +132,3 @@ held.lower()
 **The most important field is `until`, and the most important case is its absence.** An elevation nothing will close is one somebody has to remember to close — the taped-over key, opened for a reason that passed while nobody came back. A viewer draws that as worse than a bounded one rather than the same, and where an `until` is given it is enforced as well as announced, so the announcement cannot outlive the thing.
 
 A lapsed elevation is not announced at all. Posture is what is true now; history belongs in the audit trail.
-

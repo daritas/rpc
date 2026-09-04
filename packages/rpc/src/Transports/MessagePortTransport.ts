@@ -1,4 +1,4 @@
-import { GenericModule, IGenericModule, Message, TransportEvent, type RpcTransportDescription } from '../RPC/Core.js'
+import { GenericModule, IGenericModule, Message, reportedSecurityFact, TransportEvent, type RpcTransportDescription } from '../RPC/Core.js'
 import { FrameCodec, msgPackCodec } from '../RPC/Codec.js'
 import { valueRefusal } from '../RPC/Value.js'
 import { refuseDelivery } from '../RPC/Undeliverable.js'
@@ -97,7 +97,17 @@ export class MessagePortTransport extends GenericModule<Message, unknown, Messag
     }
 
     rpcDescription(): RpcTransportDescription {
-        return { name: this.getName(), protocol: 'message-port', role: 'port' }
+        return {
+            name: this.getName(),
+            protocol: 'message-port',
+            role: 'port',
+            security: {
+                authentication: reportedSecurityFact('none'),
+                encryption: reportedSecurityFact('local'),
+                signing: reportedSecurityFact('none'),
+                relay: reportedSecurityFact('not-applicable')
+            }
+        }
     }
 
     /**

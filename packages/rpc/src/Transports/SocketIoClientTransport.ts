@@ -1,5 +1,15 @@
 import { io, ManagerOptions, Socket, SocketOptions } from 'socket.io-client'
-import { GenericModule, IGenericModule, Message, publicTransportEndpoint, TransportEvent, type RpcTransportDescription } from '../RPC/Core.js'
+import {
+    GenericModule,
+    IGenericModule,
+    Message,
+    publicTransportEndpoint,
+    reportedSecurityFact,
+    TransportEvent,
+    unknownSecurityFact,
+    type RpcTransportDescription,
+    type RpcTransportEncryption
+} from '../RPC/Core.js'
 import { FrameCodec, msgPackCodec } from '../RPC/Codec.js'
 import { refuseDelivery } from '../RPC/Undeliverable.js'
 import { isUsablePeerName, isUsableShape, MAX_RELAY_HOPS, PRESENCE_EVENT, PresenceAnnouncement, PresenceUpdate } from './Presence.js'
@@ -83,7 +93,25 @@ export class SocketIoClientTransport extends GenericModule<Message, unknown, Mes
 
     rpcDescription(): RpcTransportDescription {
         const endpoint = this.url ? publicTransportEndpoint(this.url) : undefined
-        return { name: this.getName(), protocol: 'socket.io', role: 'connect', ...(endpoint ? { endpoint } : {}) }
+        const encryption = /^(https|wss):/i.test(this.url ?? '')
+            ? reportedSecurityFact(this.allowInsecureTls ? 'tls-unverified' : 'tls-verified')
+            : /^(http|ws):/i.test(this.url ?? '')
+              ? reportedSecurityFact('none')
+              : unknownSecurityFact<RpcTransportEncryption>()
+        return {
+            name: this.getName(),
+            protocol: 'socket.io',
+            role: 'connect',
+            ...(endpoint ? { endpoint } : {}),
+            security: {
+                // Presented is intentionally weaker than authenticated: only the listening peer
+                // knows whether it required and verified these credentials.
+                authentication: reportedSecurityFact(this.options.auth !== undefined ? 'credentials-presented' : 'none'),
+                encryption,
+                signing: reportedSecurityFact('none'),
+                relay: reportedSecurityFact('not-applicable')
+            }
+        }
     }
 
     /** Set for good by close(). What stops the server-restart retry from resurrecting the link. */
