@@ -132,19 +132,65 @@ test('tree scopes findings and peer sections without turning leaves into branche
     t.deepEqual(roots.data, [
         { name: 'Current console link', authentication: 'unknown', evidence: 'unknown' },
         { name: 'Findings', findings: 1 },
+        { name: 'Events', events: 0 },
         { name: 'Peers', peers: 1 }
     ])
-    t.deepEqual(roots.grouping, [true, true, true])
-    t.deepEqual(roots.hasChildren, [false, false, true])
+    t.deepEqual(roots.grouping, [true, true, true, true])
+    t.deepEqual(roots.hasChildren, [false, false, false, true])
 
-    const peers = provider.dataRequest('getChildren', ['security'], { parentId: roots.ids[2] }) as RpcGetChildrenResult
+    const peers = provider.dataRequest('getChildren', ['security'], { parentId: roots.ids[3] }) as RpcGetChildrenResult
     const alpha = peers.ids[0]
-    t.false(rowsOf(list(provider, roots.ids[2])).some((row) => row.category === 'identity'))
+    t.false(rowsOf(list(provider, roots.ids[3])).some((row) => row.category === 'identity'))
     const sections = provider.dataRequest('getChildren', ['security'], { parentId: alpha }) as RpcGetChildrenResult
-    t.deepEqual(sections.data.map((value) => (value as { name: string }).name), ['Transports', 'Elevations'])
+    t.deepEqual(sections.data.map((value) => (value as { name: string }).name), ['Transports', 'Elevations', 'Authorities'])
     const elevationBranch = sections.ids[1]
     const elevations = rowsOf(list(provider, elevationBranch))
     t.deepEqual(elevations.map((row) => row.kind), ['security.elevation'])
+})
+
+test('security events and live authority leases are ordinary scoped rows', (t) => {
+    const provider = new SecurityDataProvider({
+        peers: ['alpha'],
+        descriptions: { alpha: described() },
+        authorities: {
+            alpha: [{ namespace: 'line', methods: ['start'], authority: { holder: 'console', expiresAt: 10000, generation: 4 } }]
+        },
+        events: [
+            {
+                id: 7,
+                at: 9000,
+                kind: 'authorization-refused',
+                severity: 'medium',
+                evidence: 'link',
+                peer: 'alpha',
+                namespace: 'line',
+                method: 'start',
+                code: 'Forbidden'
+            }
+        ]
+    })
+    const roots = provider.dataRequest('getChildren', ['security'], {}) as RpcGetChildrenResult
+    const events = rowsOf(list(provider, roots.ids[2]))
+    t.deepEqual(events, [
+        {
+            name: 'authorization-refused',
+            kind: 'security.event',
+            category: 'event',
+            peer: 'alpha',
+            evidence: 'link',
+            severity: 'medium',
+            event: 'authorization-refused',
+            at: 9000,
+            code: 'Forbidden',
+            namespace: 'line',
+            method: 'start'
+        }
+    ])
+
+    const peers = provider.dataRequest('getChildren', ['security'], { parentId: roots.ids[3] }) as RpcGetChildrenResult
+    const sections = provider.dataRequest('getChildren', ['security'], { parentId: peers.ids[0] }) as RpcGetChildrenResult
+    const authorities = rowsOf(list(provider, sections.ids[2]))
+    t.like(authorities[0], { category: 'authority', namespace: 'line', holder: 'console', expiresAt: 10000, generation: 4, methods: ['start'], evidence: 'peer' })
 })
 
 test('filtering, sorting, paging and row preview use the DataProvider contract', (t) => {

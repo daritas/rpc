@@ -1,5 +1,10 @@
 import EventEmitter from "events";
-import { componentSnapshotEvent, RpcComponent } from "./Component.js";
+import {
+  componentAuthority,
+  componentSnapshotEvent,
+  RpcComponent,
+  type RpcComponentAuthority,
+} from "./Component.js";
 import {
   componentDataResources,
   describedResources,
@@ -181,6 +186,13 @@ export interface ServerDescription {
   };
   /** Named types the described methods refer to. */
   types?: { [name: string]: TypeNode };
+}
+
+/** Live arbitration state for one component that actually declares authority-gated methods. */
+export interface DescribedComponentAuthority {
+  namespace: string;
+  methods: string[];
+  authority: RpcComponentAuthority;
 }
 
 /**
@@ -379,6 +391,27 @@ export class Introspection {
         ? { since: this.handler.eventTrackedSince(namespace, event) }
         : {}),
     };
+  }
+
+  /**
+   * Current command-authority leases, separate from describe() because these values change without
+   * changing the server's surface. The ordinary msgrpc.authorities authorization check decides who
+   * may read them; no caller can infer a refused peer's holder from a cached description.
+   */
+  @rpc({ semantics: "query" })
+  async authorities(): Promise<DescribedComponentAuthority[]> {
+    return [...this.handler.manageRpc.namespaces]
+      .flatMap(([namespace, held]): DescribedComponentAuthority[] => {
+        if (!(held.instance instanceof RpcComponent) || !held.authority?.size) return [];
+        return [
+          {
+            namespace,
+            methods: [...held.authority].sort(),
+            authority: componentAuthority(held.instance),
+          },
+        ];
+      })
+      .sort((a, b) => a.namespace.localeCompare(b.namespace));
   }
 
   /**

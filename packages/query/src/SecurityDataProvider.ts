@@ -12,6 +12,7 @@ import {
     type RpcGetListResult,
     type RpcGetOneParams,
     type RpcGetOneResult,
+    type DescribedComponentAuthority,
     type RpcSecurityEvidence,
     type RpcTransportDescription,
     type RpcElevation
@@ -33,8 +34,8 @@ export type SecuritySeverity = 'high' | 'medium' | 'low' | 'unknown'
 
 export interface SecurityRow {
     readonly name: string
-    readonly kind: 'security.identity' | 'security.peer' | 'security.transport' | 'security.elevation' | 'security.finding'
-    readonly category: 'identity' | 'peer' | 'transport' | 'elevation' | 'finding'
+    readonly kind: 'security.identity' | 'security.peer' | 'security.transport' | 'security.elevation' | 'security.authority' | 'security.event' | 'security.finding'
+    readonly category: 'identity' | 'peer' | 'transport' | 'elevation' | 'authority' | 'event' | 'finding'
     readonly peer: string
     readonly evidence: RpcSecurityEvidence | 'mixed'
     readonly severity?: SecuritySeverity
@@ -62,6 +63,15 @@ export interface SecurityRow {
     readonly roles?: readonly string[]
     readonly source?: string
     readonly sourceEvidence?: RpcSecurityEvidence
+    readonly namespace?: string
+    readonly holder?: string
+    readonly expiresAt?: number
+    readonly generation?: number
+    readonly methods?: readonly string[]
+    readonly event?: string
+    readonly at?: number
+    readonly code?: string
+    readonly method?: string
 }
 
 export interface SecurityDataProviderOptions {
@@ -72,8 +82,24 @@ export interface SecurityDataProviderOptions {
     readonly refused?: Readonly<Record<string, unknown>>
     /** What the console established about the browser link carrying its own identity() call. */
     readonly observer?: SecurityObserver
+    /** Missing entries are unknown/refused; an empty array is a known answer with no guarded components. */
+    readonly authorities?: Readonly<Record<string, readonly DescribedComponentAuthority[] | undefined>>
+    readonly events?: readonly SecurityDataEvent[]
     readonly epoch?: string
     readonly revision?: number
+}
+
+export interface SecurityDataEvent {
+    readonly id: number
+    readonly at: number
+    readonly kind: string
+    readonly severity: 'high' | 'medium'
+    readonly evidence: 'link'
+    readonly peer?: string
+    readonly target?: string
+    readonly namespace?: string
+    readonly method?: string
+    readonly code: string
 }
 
 export interface SecurityObserver {
@@ -118,19 +144,28 @@ const securityResource: RpcDataResource = {
             capability: { type: { kind: 'string' }, optional: true },
             identity: { type: { kind: 'string' }, optional: true },
             roles: { type: { kind: 'array', items: { kind: 'string' } }, optional: true },
-            source: { type: { kind: 'string' }, optional: true }
+            source: { type: { kind: 'string' }, optional: true },
+            namespace: { type: { kind: 'string' }, optional: true },
+            holder: { type: { kind: 'string' }, optional: true },
+            expiresAt: { type: { kind: 'number' }, optional: true },
+            generation: { type: { kind: 'number', integer: true }, optional: true },
+            methods: { type: { kind: 'array', items: { kind: 'string' } }, optional: true },
+            event: { type: { kind: 'string' }, optional: true },
+            at: { type: { kind: 'number' }, optional: true },
+            code: { type: { kind: 'string' }, optional: true },
+            method: { type: { kind: 'string' }, optional: true }
         },
         additional: true
     },
     presentation: {
-        defaultColumns: ['severity', 'finding', 'peer', 'transport', 'authentication', 'encryption', 'signing', 'relay', 'evidence', 'message'],
+        defaultColumns: ['severity', 'finding', 'event', 'peer', 'namespace', 'holder', 'transport', 'authentication', 'encryption', 'signing', 'relay', 'evidence', 'message'],
         representation: 'name'
     }
 }
 
 export const SECURITY_RESOURCE: RpcDataResource = securityResource
 
-type BranchKind = 'identity' | 'findings' | 'peers' | 'peer' | 'transports' | 'elevations'
+type BranchKind = 'identity' | 'findings' | 'events' | 'peers' | 'peer' | 'transports' | 'elevations' | 'authorities'
 
 interface SecurityBranch {
     readonly id: string
@@ -144,9 +179,10 @@ interface SecurityBranch {
 
 const findingsId = JSON.stringify(['security', 'findings'])
 const identityId = JSON.stringify(['security', 'identity'])
+const eventsId = JSON.stringify(['security', 'events'])
 const peersId = JSON.stringify(['security', 'peers'])
 const peerId = (peer: string) => JSON.stringify(['security', 'peer', peer])
-const sectionId = (peer: string, section: 'transports' | 'elevations') => JSON.stringify(['security', section, peer])
+const sectionId = (peer: string, section: 'transports' | 'elevations' | 'authorities') => JSON.stringify(['security', section, peer])
 const rowId = (category: SecurityRow['category'], peer: string, identity: readonly unknown[]) => JSON.stringify(['security-row', category, peer, ...identity])
 
 const evidenceOf = (transport: RpcTransportDescription): RpcSecurityEvidence | 'mixed' => {
@@ -183,6 +219,8 @@ export class SecurityDataProvider implements RpcDataProvider {
     private readonly descriptions: SecurityDataProviderOptions['descriptions']
     private readonly refused: NonNullable<SecurityDataProviderOptions['refused']>
     private readonly observer?: SecurityObserver
+    private readonly authorities: NonNullable<SecurityDataProviderOptions['authorities']>
+    private readonly events: readonly SecurityDataEvent[]
     private readonly epoch: string
     private readonly revision: number
 
@@ -191,6 +229,8 @@ export class SecurityDataProvider implements RpcDataProvider {
         this.descriptions = options.descriptions
         this.refused = options.refused ?? {}
         this.observer = options.observer
+        this.authorities = options.authorities ?? {}
+        this.events = options.events ?? []
         this.epoch = options.epoch ?? 'security-view'
         this.revision = options.revision ?? 0
     }
@@ -229,6 +269,7 @@ export class SecurityDataProvider implements RpcDataProvider {
                 }
             },
             { id: findingsId, kind: 'findings', label: 'Findings', hasChildren: false, value: { name: 'Findings', findings } },
+            { id: eventsId, kind: 'events', label: 'Events', hasChildren: false, value: { name: 'Events', events: this.events.length } },
             { id: peersId, kind: 'peers', label: 'Peers', hasChildren: this.peers.length > 0, value: { name: 'Peers', peers: this.peers.length } }
         ]
         const children = this.peers.flatMap((peer): SecurityBranch[] => {
@@ -270,6 +311,21 @@ export class SecurityDataProvider implements RpcDataProvider {
                     parent: id,
                     hasChildren: false,
                     value: { name: 'Elevations', peer, elevations, evidence: description ? 'peer' : 'unknown' }
+                },
+                {
+                    id: sectionId(peer, 'authorities'),
+                    kind: 'authorities',
+                    label: 'Authorities',
+                    peer,
+                    parent: id,
+                    hasChildren: false,
+                    value: {
+                        name: 'Authorities',
+                        peer,
+                        ...(this.authorities[peer]
+                            ? { authorities: this.authorities[peer].length, evidence: 'peer' }
+                            : { evidence: 'unknown' })
+                    }
                 }
             ]
         })
@@ -299,12 +355,14 @@ export class SecurityDataProvider implements RpcDataProvider {
             return { ids: [], data: [], total: 0, hasMore: false, epoch: this.epoch, revision: this.revision }
         const rows = this.rows().filter(([, row]) => {
             if (!branch) return true
-            if (branch.kind === 'peers') return row.category !== 'identity'
+            if (branch.kind === 'peers') return row.category !== 'identity' && row.category !== 'event'
             if (branch.kind === 'identity') return row.category === 'identity'
             if (branch.kind === 'findings') return row.category === 'finding'
+            if (branch.kind === 'events') return row.category === 'event'
             if (branch.kind === 'peer') return row.peer === branch.peer
             if (branch.kind === 'transports') return row.peer === branch.peer && row.category === 'transport'
-            return row.peer === branch.peer && row.category === 'elevation'
+            if (branch.kind === 'elevations') return row.peer === branch.peer && row.category === 'elevation'
+            return row.peer === branch.peer && row.category === 'authority'
         })
         return { ...pageEntries(rows, params), epoch: this.epoch, revision: this.revision }
     }
@@ -315,7 +373,26 @@ export class SecurityDataProvider implements RpcDataProvider {
     }
 
     private rows(): readonly (readonly [string, SecurityRow])[] {
-        return [this.identityRow(), ...this.peers.flatMap((peer) => this.peerRows(peer))]
+        return [this.identityRow(), ...this.eventRows(), ...this.peers.flatMap((peer) => this.peerRows(peer))]
+    }
+
+    private eventRows(): readonly (readonly [string, SecurityRow])[] {
+        return this.events.map((event) => [
+            rowId('event', event.peer ?? event.target ?? '$console-link', [event.id]),
+            {
+                name: event.kind,
+                kind: 'security.event',
+                category: 'event',
+                peer: event.peer ?? event.target ?? '$console-link',
+                evidence: event.evidence,
+                severity: event.severity,
+                event: event.kind,
+                at: event.at,
+                code: event.code,
+                ...(event.namespace ? { namespace: event.namespace } : {}),
+                ...(event.method ? { method: event.method } : {})
+            }
+        ])
     }
 
     private identityRow(): readonly [string, SecurityRow] {
@@ -444,6 +521,36 @@ export class SecurityDataProvider implements RpcDataProvider {
                     }
                 ])
         }
+        const authorities = this.authorities[peer]
+        if (authorities === undefined)
+            rows.push([
+                rowId('authority', peer, ['unknown']),
+                {
+                    name: `Authority posture on ${peer}`,
+                    kind: 'security.authority',
+                    category: 'authority',
+                    peer,
+                    evidence: 'unknown',
+                    message: 'Authority state is unavailable or has not been read'
+                }
+            ])
+        else
+            for (const authority of authorities)
+                rows.push([
+                    rowId('authority', peer, [authority.namespace]),
+                    {
+                        name: authority.namespace,
+                        kind: 'security.authority',
+                        category: 'authority',
+                        peer,
+                        evidence: 'peer',
+                        namespace: authority.namespace,
+                        methods: authority.methods,
+                        generation: authority.authority.generation,
+                        ...(authority.authority.holder ? { holder: authority.authority.holder } : {}),
+                        ...(authority.authority.expiresAt !== undefined ? { expiresAt: authority.authority.expiresAt } : {})
+                    }
+                ])
         return rows
     }
 

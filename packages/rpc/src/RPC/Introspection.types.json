@@ -196,6 +196,52 @@
         }
       }
     },
+    "DescribedComponentAuthority": {
+      "kind": "object",
+      "fields": {
+        "namespace": {
+          "type": {
+            "kind": "string"
+          }
+        },
+        "methods": {
+          "type": {
+            "kind": "array",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        "authority": {
+          "type": {
+            "kind": "ref",
+            "name": "RpcComponentAuthority"
+          }
+        }
+      }
+    },
+    "RpcComponentAuthority": {
+      "kind": "object",
+      "fields": {
+        "holder": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "expiresAt": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "generation": {
+          "type": {
+            "kind": "number"
+          }
+        }
+      }
+    },
     "ServerDescription": {
       "kind": "object",
       "fields": {
@@ -2999,6 +3045,17 @@
                 },
                 "optional": true
               }
+            }
+          },
+          "semantics": "query"
+        },
+        "authorities": {
+          "params": [],
+          "returns": {
+            "kind": "array",
+            "items": {
+              "kind": "ref",
+              "name": "DescribedComponentAuthority"
             }
           },
           "semantics": "query"

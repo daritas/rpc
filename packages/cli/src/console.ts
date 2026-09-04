@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { extname, join, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { EventEmitter } from 'events'
-import { MqttTransport, RpcServer, SCHEMA_VERSION, TransportEvent, rpc, rpcNamespace, type RelayedFrame, type RpcInvocationHandle, type RpcSchema, type ServerDescription } from '@source-repo/rpc'
+import { MqttTransport, RpcServer, SCHEMA_VERSION, TransportEvent, rpc, rpcNamespace, type DescribedComponentAuthority, type RelayedFrame, type RpcInvocationHandle, type RpcSchema, type ServerDescription } from '@source-repo/rpc'
 import { networkTransports, type NetworkOptions } from './network.js'
 import { BusService, DEFAULT_TAP_TTL, type TapFilter, type TappedFrame } from './bus.js'
 // The tap's own contract, merged with the console's below: one server, and a schema has to describe
@@ -144,6 +144,22 @@ export interface ConsoleLinkIdentity {
     identity?: { name: string; roles?: string[] }
 }
 
+export type SecurityEventKind = 'authentication-failure' | 'signature-failure' | 'transport-rejection' | 'authorization-refused' | 'authority-refused'
+
+/** Bounded operational evidence, deliberately not a durable audit record. */
+export interface SecurityEvent {
+    id: number
+    at: number
+    kind: SecurityEventKind
+    severity: 'high' | 'medium'
+    evidence: 'link'
+    peer?: string
+    target?: string
+    namespace?: string
+    method?: string
+    code: string
+}
+
 /**
  * A frame a transport refused or could not deliver, a name two peers claimed, or a link that
  * failed - the four things that otherwise reach a caller only as an unexplained timeout.
@@ -167,6 +183,13 @@ export interface NetworkProblem {
 
 /** How much history the console keeps. These arrive unasked, so the buffers are bounded. */
 const PROBLEM_HISTORY = 200
+
+const securityKindOf = (reason: string | undefined): SecurityEventKind => {
+    const text = reason?.toLowerCase() ?? ''
+    if (text.includes('signature') || text.includes('unsigned') || text.includes('replay')) return 'signature-failure'
+    if (text.includes('authentic') || text.includes('credential') || text.includes('identity') || text.includes('claimed')) return 'authentication-failure'
+    return 'transport-rejection'
+}
 
 /**
  * What a description says the peer is. A broker exposes the tap and nothing else; a console has its
@@ -195,6 +218,7 @@ export class ConsoleService extends EventEmitter {
         peer: [change: PeerChange]
         frame: [frame: TappedFrame]
         problem: [problem: NetworkProblem]
+        security: [event: SecurityEvent]
     }
 
     /**
@@ -237,6 +261,8 @@ export class ConsoleService extends EventEmitter {
 
     /** What has gone wrong on the links, newest first and bounded. */
     private readonly seen: NetworkProblem[] = []
+    private readonly securitySeen: SecurityEvent[] = []
+    private securityCounter = 0
 
     /**
      * Peers arriving and leaving, newest first and bounded.
@@ -277,6 +303,13 @@ export class ConsoleService extends EventEmitter {
         this.seen.unshift(problem)
         if (this.seen.length > PROBLEM_HISTORY) this.seen.length = PROBLEM_HISTORY
         this.emit('problem', problem)
+    }
+
+    noteSecurity(event: Omit<SecurityEvent, 'id'>) {
+        const recorded = { ...event, id: ++this.securityCounter }
+        this.securitySeen.unshift(recorded)
+        if (this.securitySeen.length > PROBLEM_HISTORY) this.securitySeen.length = PROBLEM_HISTORY
+        this.emit('security', recorded)
     }
 
     /** Console-side token -> the taps it opened, here and on other peers, and when they lapse. */
@@ -348,6 +381,11 @@ export class ConsoleService extends EventEmitter {
         return { problems: [...this.seen] }
     }
 
+    @rpc({ semantics: 'query' })
+    async securityEvents(): Promise<{ events: SecurityEvent[] }> {
+        return { events: [...this.securitySeen] }
+    }
+
     /**
      * Peers arriving and leaving, newest first - including before this page was opened, which is
      * the half that matters when the question is whether something has been flapping.
@@ -379,6 +417,13 @@ export class ConsoleService extends EventEmitter {
         }
     }
 
+    /** Live arbitration is queried separately from the cached structural description. */
+    @rpc({ semantics: 'query' })
+    async authorities(peer: string): Promise<DescribedComponentAuthority[]> {
+        const proxy = await this.reach(peer).proxy<{ authorities: () => Promise<DescribedComponentAuthority[]> }>('msgrpc', peer)
+        return await proxy.authorities()
+    }
+
     @rpc
     async call(
         peer: string,
@@ -404,7 +449,19 @@ export class ConsoleService extends EventEmitter {
         } catch (e) {
             // Reported rather than thrown: an RpcError's code is the useful part, and it would be
             // flattened into a generic exception on its way back to the browser.
-            return { ...asFailure(e), ms: Date.now() - started }
+            const failure = asFailure(e)
+            if (failure.code === 'Unauthorized' || failure.code === 'Forbidden' || failure.code === 'NotInControl')
+                this.noteSecurity({
+                    at: Date.now(),
+                    kind: failure.code === 'NotInControl' ? 'authority-refused' : 'authorization-refused',
+                    severity: failure.code === 'Unauthorized' ? 'high' : 'medium',
+                    evidence: 'link',
+                    peer,
+                    namespace,
+                    method,
+                    code: failure.code
+                })
+            return { ...failure, ms: Date.now() - started }
         }
     }
 
@@ -819,9 +876,18 @@ export const startConsole = async (options: ConsoleOptions) => {
         // they cover every way a call disappears without an answer: refused before the RPC layer,
         // undeliverable, answered to whichever connection claimed the name last, or a link that
         // failed underneath.
-        transport.on(TransportEvent.rejected, (report: { source?: string; reason?: string }) =>
+        transport.on(TransportEvent.rejected, (report: { source?: string; reason?: string }) => {
             service.noteProblem({ at: Date.now(), kind: 'rejected', link, ...(report?.source ? { peer: report.source } : {}), ...(report?.reason ? { reason: report.reason } : {}) })
-        )
+            const kind = securityKindOf(report?.reason)
+            service.noteSecurity({
+                at: Date.now(),
+                kind,
+                severity: kind === 'transport-rejection' ? 'medium' : 'high',
+                evidence: 'link',
+                ...(report?.source ? { peer: report.source } : {}),
+                code: kind
+            })
+        })
         transport.on(TransportEvent.unroutable, (report: { source?: string; target?: string; reason?: string }) =>
             service.noteProblem({
                 at: Date.now(),

@@ -143,6 +143,13 @@ actually authorized. No dry-run contract has been justified yet.
 - Surface authority holders, expiry and generation where authorized.
 - Reuse the existing acquire/release operations; add no parallel control protocol.
 
+The first operational slice is now implemented. Transport rejections and relayed-call
+authorization/authority refusals are kept as a 200-entry, secret-free console history and projected
+through the Security DataProvider. Authorized peers expose live authority holder, expiry and
+generation through a query kept separate from structural `describe()` caching. Authority changes,
+AI decisions and elevation changes still need explicit event hooks; this history is diagnostic and
+does not claim completeness or durable audit semantics.
+
 ### 5. End-to-end fixture
 
 Create a security demonstration network containing anonymous, viewer, operator, engineer and AI

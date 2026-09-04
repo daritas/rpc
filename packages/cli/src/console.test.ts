@@ -115,6 +115,27 @@ test('console link identity publishes the pinned name and roles but never authen
     })
 })
 
+test('operational security events are bounded and contain only safe reason codes', async (t) => {
+    const service = new ConsoleServiceImplementation(new Set(), 1000)
+    for (let at = 1; at <= 205; at++)
+        service.noteSecurity({
+            at,
+            kind: 'authorization-refused',
+            severity: 'medium',
+            evidence: 'link',
+            peer: 'line',
+            namespace: 'control',
+            method: 'start',
+            code: 'Forbidden'
+        })
+
+    const { events } = await service.securityEvents()
+    t.is(events.length, 200)
+    t.is(events[0].at, 205)
+    t.is(events[199].at, 6)
+    t.false(JSON.stringify(events).includes('reason'))
+})
+
 test('the console discovers a peer, describes it, calls it and streams its events over Source RPC', async (t) => {
     if (t.context.skipped) {
         t.pass(`no MQTT broker at ${BROKER_URL} - skipped`)

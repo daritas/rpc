@@ -190,6 +190,102 @@
         }
       }
     },
+    "SecurityEvent": {
+      "kind": "object",
+      "fields": {
+        "id": {
+          "type": {
+            "kind": "number"
+          }
+        },
+        "at": {
+          "type": {
+            "kind": "number"
+          }
+        },
+        "kind": {
+          "type": {
+            "kind": "ref",
+            "name": "SecurityEventKind"
+          }
+        },
+        "severity": {
+          "type": {
+            "kind": "union",
+            "options": [
+              {
+                "kind": "literal",
+                "value": "high"
+              },
+              {
+                "kind": "literal",
+                "value": "medium"
+              }
+            ]
+          }
+        },
+        "evidence": {
+          "type": {
+            "kind": "literal",
+            "value": "link"
+          }
+        },
+        "peer": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "target": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "namespace": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "method": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "code": {
+          "type": {
+            "kind": "string"
+          }
+        }
+      }
+    },
+    "SecurityEventKind": {
+      "kind": "union",
+      "options": [
+        {
+          "kind": "literal",
+          "value": "authentication-failure"
+        },
+        {
+          "kind": "literal",
+          "value": "signature-failure"
+        },
+        {
+          "kind": "literal",
+          "value": "transport-rejection"
+        },
+        {
+          "kind": "literal",
+          "value": "authorization-refused"
+        },
+        {
+          "kind": "literal",
+          "value": "authority-refused"
+        }
+      ]
+    },
     "PeerChange": {
       "kind": "object",
       "fields": {
@@ -2975,6 +3071,52 @@
         }
       }
     },
+    "DescribedComponentAuthority": {
+      "kind": "object",
+      "fields": {
+        "namespace": {
+          "type": {
+            "kind": "string"
+          }
+        },
+        "methods": {
+          "type": {
+            "kind": "array",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        "authority": {
+          "type": {
+            "kind": "ref",
+            "name": "RpcComponentAuthority"
+          }
+        }
+      }
+    },
+    "RpcComponentAuthority": {
+      "kind": "object",
+      "fields": {
+        "holder": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "expiresAt": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "generation": {
+          "type": {
+            "kind": "number"
+          }
+        }
+      }
+    },
     "TapFilter": {
       "kind": "object",
       "fields": {
@@ -3268,6 +3410,24 @@
             }
           }
         },
+        "securityEvents": {
+          "params": [],
+          "returns": {
+            "kind": "object",
+            "fields": {
+              "events": {
+                "type": {
+                  "kind": "array",
+                  "items": {
+                    "kind": "ref",
+                    "name": "SecurityEvent"
+                  }
+                }
+              }
+            }
+          },
+          "semantics": "query"
+        },
         "presence": {
           "params": [],
           "returns": {
@@ -3319,6 +3479,24 @@
               }
             ]
           }
+        },
+        "authorities": {
+          "params": [
+            {
+              "kind": "string"
+            }
+          ],
+          "paramNames": [
+            "peer"
+          ],
+          "returns": {
+            "kind": "array",
+            "items": {
+              "kind": "ref",
+              "name": "DescribedComponentAuthority"
+            }
+          },
+          "semantics": "query"
         },
         "call": {
           "params": [
@@ -3566,6 +3744,14 @@
             {
               "kind": "ref",
               "name": "NetworkProblem"
+            }
+          ]
+        },
+        "security": {
+          "params": [
+            {
+              "kind": "ref",
+              "name": "SecurityEvent"
             }
           ]
         }

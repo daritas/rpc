@@ -1,4 +1,4 @@
-import type { RpcTransportDescription } from '@source-repo/rpc'
+import type { DescribedComponentAuthority, RpcTransportDescription } from '@source-repo/rpc'
 
 /** The shapes the console receives from `msgrpc.describe()`, mirrored so the app stays self-contained. */
 
@@ -256,6 +256,10 @@ export interface PeerStructure {
 export interface ConsoleService {
     /** The browser-to-console link only; target calls are made by the relaying console. */
     identity(): Promise<ConsoleLinkIdentity>
+    /** Current authority leases, when the target permits this observer to read them. */
+    authorities(peer: string): Promise<DescribedComponentAuthority[]>
+    /** Bounded operational security diagnostics; not a durable audit log. */
+    securityEvents(): Promise<{ events: SecurityEvent[] }>
     peers(): Promise<{
         peers: string[]
         watching: string[]
@@ -297,6 +301,19 @@ export interface ConsoleLinkIdentity {
     authentication: { value: 'authenticated' | 'none'; evidence: 'link' }
     source: { value: string; evidence: 'link' | 'unknown' }
     identity?: { name: string; roles?: string[] }
+}
+
+export interface SecurityEvent {
+    id: number
+    at: number
+    kind: 'authentication-failure' | 'signature-failure' | 'transport-rejection' | 'authorization-refused' | 'authority-refused'
+    severity: 'high' | 'medium'
+    evidence: 'link'
+    peer?: string
+    target?: string
+    namespace?: string
+    method?: string
+    code: string
 }
 
 export interface StreamedEvent {
