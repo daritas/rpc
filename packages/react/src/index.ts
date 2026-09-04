@@ -36,6 +36,7 @@ export * from './watching.js'
 export * from './writes.js'
 export * from './timing.js'
 export * from './data.js'
+export * from './access.js'
 
 // The components, which are.
 export * from './ArgumentField.js'

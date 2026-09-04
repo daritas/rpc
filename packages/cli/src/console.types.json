@@ -70,6 +70,88 @@
         }
       }
     },
+    "ConsoleLinkIdentity": {
+      "kind": "object",
+      "fields": {
+        "authentication": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "authenticated"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    }
+                  ]
+                }
+              },
+              "evidence": {
+                "type": {
+                  "kind": "literal",
+                  "value": "link"
+                }
+              }
+            }
+          }
+        },
+        "source": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "evidence": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "link"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "unknown"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "identity": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "name": {
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "roles": {
+                "type": {
+                  "kind": "array",
+                  "items": {
+                    "kind": "string"
+                  }
+                },
+                "optional": true
+              }
+            }
+          },
+          "optional": true
+        }
+      }
+    },
     "NetworkProblem": {
       "kind": "object",
       "fields": {
@@ -327,15 +409,15 @@
                   "options": [
                     {
                       "kind": "literal",
+                      "value": "none"
+                    },
+                    {
+                      "kind": "literal",
                       "value": "connection"
                     },
                     {
                       "kind": "literal",
                       "value": "credentials-presented"
-                    },
-                    {
-                      "kind": "literal",
-                      "value": "none"
                     }
                   ]
                 },
@@ -476,15 +558,15 @@
         },
         {
           "kind": "literal",
+          "value": "unknown"
+        },
+        {
+          "kind": "literal",
           "value": "peer"
         },
         {
           "kind": "literal",
           "value": "local"
-        },
-        {
-          "kind": "literal",
-          "value": "unknown"
         }
       ]
     },
@@ -3160,6 +3242,14 @@
               }
             }
           }
+        },
+        "identity": {
+          "params": [],
+          "returns": {
+            "kind": "ref",
+            "name": "ConsoleLinkIdentity"
+          },
+          "semantics": "query"
         },
         "problems": {
           "params": [],

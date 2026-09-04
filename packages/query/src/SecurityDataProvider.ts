@@ -33,8 +33,8 @@ export type SecuritySeverity = 'high' | 'medium' | 'low' | 'unknown'
 
 export interface SecurityRow {
     readonly name: string
-    readonly kind: 'security.peer' | 'security.transport' | 'security.elevation' | 'security.finding'
-    readonly category: 'peer' | 'transport' | 'elevation' | 'finding'
+    readonly kind: 'security.identity' | 'security.peer' | 'security.transport' | 'security.elevation' | 'security.finding'
+    readonly category: 'identity' | 'peer' | 'transport' | 'elevation' | 'finding'
     readonly peer: string
     readonly evidence: RpcSecurityEvidence | 'mixed'
     readonly severity?: SecuritySeverity
@@ -58,6 +58,10 @@ export interface SecurityRow {
     readonly since?: number
     readonly until?: number
     readonly grantedBy?: string
+    readonly identity?: string
+    readonly roles?: readonly string[]
+    readonly source?: string
+    readonly sourceEvidence?: RpcSecurityEvidence
 }
 
 export interface SecurityDataProviderOptions {
@@ -66,8 +70,19 @@ export interface SecurityDataProviderOptions {
     readonly descriptions: Readonly<Record<string, SecurityDescription | undefined>>
     /** A refusal changes the explanation, never the trust level. Its raw message is not exposed. */
     readonly refused?: Readonly<Record<string, unknown>>
+    /** What the console established about the browser link carrying its own identity() call. */
+    readonly observer?: SecurityObserver
     readonly epoch?: string
     readonly revision?: number
+}
+
+export interface SecurityObserver {
+    readonly authentication: 'authenticated' | 'none'
+    readonly authenticationEvidence: 'link'
+    readonly source: string
+    readonly sourceEvidence: 'link' | 'unknown'
+    readonly identity?: string
+    readonly roles?: readonly string[]
 }
 
 /** The safe subset of describe() used by this projection. */
@@ -100,7 +115,10 @@ const securityResource: RpcDataResource = {
             signing: { type: { kind: 'string' }, optional: true },
             relay: { type: { kind: 'string' }, optional: true },
             evidence: { type: { kind: 'string' } },
-            capability: { type: { kind: 'string' }, optional: true }
+            capability: { type: { kind: 'string' }, optional: true },
+            identity: { type: { kind: 'string' }, optional: true },
+            roles: { type: { kind: 'array', items: { kind: 'string' } }, optional: true },
+            source: { type: { kind: 'string' }, optional: true }
         },
         additional: true
     },
@@ -112,7 +130,7 @@ const securityResource: RpcDataResource = {
 
 export const SECURITY_RESOURCE: RpcDataResource = securityResource
 
-type BranchKind = 'findings' | 'peers' | 'peer' | 'transports' | 'elevations'
+type BranchKind = 'identity' | 'findings' | 'peers' | 'peer' | 'transports' | 'elevations'
 
 interface SecurityBranch {
     readonly id: string
@@ -125,6 +143,7 @@ interface SecurityBranch {
 }
 
 const findingsId = JSON.stringify(['security', 'findings'])
+const identityId = JSON.stringify(['security', 'identity'])
 const peersId = JSON.stringify(['security', 'peers'])
 const peerId = (peer: string) => JSON.stringify(['security', 'peer', peer])
 const sectionId = (peer: string, section: 'transports' | 'elevations') => JSON.stringify(['security', section, peer])
@@ -163,6 +182,7 @@ export class SecurityDataProvider implements RpcDataProvider {
     private readonly peers: readonly string[]
     private readonly descriptions: SecurityDataProviderOptions['descriptions']
     private readonly refused: NonNullable<SecurityDataProviderOptions['refused']>
+    private readonly observer?: SecurityObserver
     private readonly epoch: string
     private readonly revision: number
 
@@ -170,6 +190,7 @@ export class SecurityDataProvider implements RpcDataProvider {
         this.peers = [...new Set(options.peers)].sort()
         this.descriptions = options.descriptions
         this.refused = options.refused ?? {}
+        this.observer = options.observer
         this.epoch = options.epoch ?? 'security-view'
         this.revision = options.revision ?? 0
     }
@@ -196,6 +217,17 @@ export class SecurityDataProvider implements RpcDataProvider {
     private branches(): readonly SecurityBranch[] {
         const findings = this.rows().filter(([, row]) => row.category === 'finding').length
         const roots: SecurityBranch[] = [
+            {
+                id: identityId,
+                kind: 'identity',
+                label: 'Current console link',
+                hasChildren: false,
+                value: {
+                    name: 'Current console link',
+                    authentication: this.observer?.authentication ?? 'unknown',
+                    evidence: this.observer?.authenticationEvidence ?? 'unknown'
+                }
+            },
             { id: findingsId, kind: 'findings', label: 'Findings', hasChildren: false, value: { name: 'Findings', findings } },
             { id: peersId, kind: 'peers', label: 'Peers', hasChildren: this.peers.length > 0, value: { name: 'Peers', peers: this.peers.length } }
         ]
@@ -266,7 +298,9 @@ export class SecurityDataProvider implements RpcDataProvider {
         if (params.under !== undefined && !branch)
             return { ids: [], data: [], total: 0, hasMore: false, epoch: this.epoch, revision: this.revision }
         const rows = this.rows().filter(([, row]) => {
-            if (!branch || branch.kind === 'peers') return true
+            if (!branch) return true
+            if (branch.kind === 'peers') return row.category !== 'identity'
+            if (branch.kind === 'identity') return row.category === 'identity'
             if (branch.kind === 'findings') return row.category === 'finding'
             if (branch.kind === 'peer') return row.peer === branch.peer
             if (branch.kind === 'transports') return row.peer === branch.peer && row.category === 'transport'
@@ -281,7 +315,35 @@ export class SecurityDataProvider implements RpcDataProvider {
     }
 
     private rows(): readonly (readonly [string, SecurityRow])[] {
-        return this.peers.flatMap((peer) => this.peerRows(peer))
+        return [this.identityRow(), ...this.peers.flatMap((peer) => this.peerRows(peer))]
+    }
+
+    private identityRow(): readonly [string, SecurityRow] {
+        const observer = this.observer
+        return [
+            rowId('identity', '$console-link', ['current']),
+            {
+                name: observer?.identity ?? observer?.source ?? 'Current console link',
+                kind: 'security.identity',
+                category: 'identity',
+                peer: '$console-link',
+                evidence: observer
+                    ? observer.authenticationEvidence === observer.sourceEvidence
+                        ? observer.authenticationEvidence
+                        : 'mixed'
+                    : 'unknown',
+                ...(observer
+                    ? {
+                          authentication: observer.authentication,
+                          authenticationEvidence: observer.authenticationEvidence,
+                          source: observer.source,
+                          sourceEvidence: observer.sourceEvidence,
+                          ...(observer.identity ? { identity: observer.identity } : {}),
+                          ...(observer.roles ? { roles: observer.roles } : {})
+                      }
+                    : {})
+            }
+        ]
     }
 
     private peerRows(peer: string): readonly (readonly [string, SecurityRow])[] {

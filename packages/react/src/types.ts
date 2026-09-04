@@ -28,12 +28,16 @@ export interface DescribedMethod {
     rest?: TypeNode
     returns?: TypeNode
     semantics?: RpcMethodSemantics
+    /** Effect the target says it enforces; absent on older or undescribed surfaces. */
+    effect?: import('@source-repo/rpc').RpcEffect
     /**
      * Which path in the component's state calling this sets, when the method declares it - a field,
      * a dot path, or `*` for a method that takes the path as an argument. This is what the state
      * tree draws its editors from; a method that claims nothing gets none.
      */
     sets?: string
+    /** True when the component authority holder is additionally required. */
+    requiresAuthority?: boolean
 }
 
 export interface DescribedEvent {
@@ -250,6 +254,8 @@ export interface PeerStructure {
 
 /** What the console's own service offers over msgrpc. */
 export interface ConsoleService {
+    /** The browser-to-console link only; target calls are made by the relaying console. */
+    identity(): Promise<ConsoleLinkIdentity>
     peers(): Promise<{
         peers: string[]
         watching: string[]
@@ -285,6 +291,12 @@ export interface ConsoleService {
     tap(filter?: TapFilter): Promise<{ token: string; sources: string[] }>
     untap(token: string): Promise<{ tapping: boolean; already: boolean }>
     taps(): Promise<{ taps: { token: string; sources: string[] }[]; sources: string[] }>
+}
+
+export interface ConsoleLinkIdentity {
+    authentication: { value: 'authenticated' | 'none'; evidence: 'link' }
+    source: { value: string; evidence: 'link' | 'unknown' }
+    identity?: { name: string; roles?: string[] }
 }
 
 export interface StreamedEvent {

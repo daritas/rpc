@@ -95,6 +95,22 @@ Only closed posture values travel. Tokens, usernames, passwords, keys, certifica
 transport options do not. Public endpoints have user information, query and fragment stripped
 before they enter `describe()`.
 
+### Console-link identity is not target identity
+
+The web console can ask its own `console.identity()` query what the console server established about
+the browser connection carrying that call. The answer contains only authentication state, the
+routed source, and—when the transport authenticated it—the pinned identity name and roles. It never
+contains authenticator claims, tokens, credentials, or policy details. Each source fact says whether
+it is link evidence or an unverified routed claim.
+
+This does **not** answer whether the browser may call a plant method. Browser calls are relayed: the
+page asks the console process, then that process asks the target peer. The target authorizes the
+console's outbound link identity or source claim, not the browser-link identity displayed by the
+Security workspace. Consequently the method panel can explain the target's declared effect,
+semantics, component-authority requirement, and current elevations, but its access decision remains
+**unknown until call time**. A custom authorizer may also use parameters and private policy that
+introspection must not reveal.
+
 ### The management surface
 
 `manageRpc` is **not exposed by default**. Enabling it publishes exactly one method, `createRpcInstance`, which constructs an instance of a class already passed to `exposeClass()`:

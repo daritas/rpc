@@ -133,6 +133,18 @@ export interface ConsoleTap {
 }
 
 /**
+ * What the console server can establish about the browser connection carrying this call.
+ *
+ * Claims are deliberately absent. They are authenticator-specific and may contain credentials or
+ * policy internals; the open console needs only the pinned name and roles a person can interpret.
+ */
+export interface ConsoleLinkIdentity {
+    authentication: { value: 'authenticated' | 'none'; evidence: 'link' }
+    source: { value: string; evidence: 'link' | 'unknown' }
+    identity?: { name: string; roles?: string[] }
+}
+
+/**
  * A frame a transport refused or could not deliver, a name two peers claimed, or a link that
  * failed - the four things that otherwise reach a caller only as an unexplained timeout.
  *
@@ -304,6 +316,24 @@ export class ConsoleService extends EventEmitter {
             // the hub's at once, and on a plant where the devices are on one and the HMIs on
             // another that is the first thing worth knowing about a peer.
             links: Object.fromEntries(this.links)
+        }
+    }
+
+    /** Who this call is on the browser-to-console link; never a claim about a target peer's link. */
+    @rpc({ semantics: 'query', injectInvocation: true })
+    async identity(invocation: RpcInvocationHandle): Promise<ConsoleLinkIdentity> {
+        const { source, identity } = invocation.context
+        return {
+            authentication: { value: identity ? 'authenticated' : 'none', evidence: 'link' },
+            source: { value: source, evidence: identity ? 'link' : 'unknown' },
+            ...(identity
+                ? {
+                      identity: {
+                          name: identity.name,
+                          ...(identity.roles ? { roles: [...identity.roles] } : {})
+                      }
+                  }
+                : {})
         }
     }
 

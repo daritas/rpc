@@ -133,6 +133,10 @@ signatures is different from this link verifying a signature.
 - Add method-level static explanations.
 - Add a gated dry-run contract only if static explanation proves insufficient.
 
+The first two items are now implemented. The console reports only the browser-to-console identity
+and the method panel explicitly distinguishes it from the console-to-target identity that is
+actually authorized. No dry-run contract has been justified yet.
+
 ### 4. Operational security events and authority
 
 - Normalize bounded security events into Problems/Operations.

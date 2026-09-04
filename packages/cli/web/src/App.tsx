@@ -11,7 +11,7 @@ import { ChatMessage, ChatService } from './ChatService'
 import chatContract from './chat.types.json'
 import { ComponentPanel } from './ComponentPanel'
 import { ContextPanel } from './ContextPanel'
-import { asWatch, ConsoleService, DataProviderValueGrid, holds, DescribedEvent, fetchConsoleName, NetworkProblem, NetworkValueGrid, PeerChange, PeerStructure, ServerDescription, socketPath, StreamedEvent, TappedFrame, typeText, withNode, type NetworkMethodSelection, type Watch, type WatchNode } from '@source-repo/react'
+import { asWatch, ConsoleService, DataProviderValueGrid, holds, DescribedEvent, fetchConsoleName, NetworkProblem, NetworkValueGrid, PeerChange, PeerStructure, ServerDescription, socketPath, StreamedEvent, TappedFrame, typeText, withNode, type ConsoleLinkIdentity, type NetworkMethodSelection, type Watch, type WatchNode } from '@source-repo/react'
 import { throttled } from '@source-repo/search'
 import { MethodPanel } from './MethodPanel'
 import { Operations } from './Operations'
@@ -73,6 +73,7 @@ const useConsole = () => {
     const [service, setService] = useState<ConsoleService | null>(null)
     const [me, setMe] = useState('')
     const [status, setStatus] = useState('connecting')
+    const [linkIdentity, setLinkIdentity] = useState<ConsoleLinkIdentity | null>(null)
     const events = useRef<((event: StreamedEvent) => void) | null>(null)
     const peerChange = useRef<((peer: string, state: string, change: PeerChange) => void) | null>(null)
     const said = useRef<((from: string, text: string) => void) | null>(null)
@@ -150,6 +151,7 @@ const useConsole = () => {
 
         const connect = async () => {
             try {
+                setLinkIdentity(null)
                 // Ask who is serving this page before addressing it: the console's name is its own
                 // name on the network, so it differs between instances.
                 const consoleName = await fetchConsoleName()
@@ -234,8 +236,15 @@ const useConsole = () => {
                 // The console does the waiting: it holds the broker link, enforces --timeout, and
                 // its answer says what went wrong. A browser giving up first would replace that
                 // diagnosis with a bare 'Timeout' at almost exactly the same moment.
-                const { callTimeout } = await remote.peers()
+                const [{ callTimeout }, identity] = await Promise.all([
+                    remote.peers(),
+                    // A page may be served briefly by an older already-running console after its
+                    // assets were upgraded. Identity is additional posture, not a condition for
+                    // reaching the network, so that rolling-version seam stays explicitly unknown.
+                    remote.identity().catch(() => null)
+                ])
                 if (callTimeout) server.caller.callTimeout = callTimeout + 5000
+                if (identity) setLinkIdentity(identity)
                 setService(remote)
                 setStatus('connected')
             } catch (e) {
@@ -264,7 +273,7 @@ const useConsole = () => {
         }
     }, [])
 
-    return { service, status, me, events, peerChange, said, frames, problems, peer, data, operations, relay }
+    return { service, status, me, linkIdentity, events, peerChange, said, frames, problems, peer, data, operations, relay }
 }
 
 /**
@@ -304,7 +313,7 @@ type Workspace = 'network' | 'security' | 'traffic' | 'problems' | 'presence' | 
 type SideTab = 'actions' | 'chat' | 'events'
 
 export const App = () => {
-    const { service, status, me, events, peerChange, said, frames, problems, peer, data, operations, relay } = useConsole()
+    const { service, status, me, linkIdentity, events, peerChange, said, frames, problems, peer, data, operations, relay } = useConsole()
     const [chats, setChats] = useState<{ [peer: string]: ChatMessage[] }>({})
     /**
      * Messages that have arrived and not been looked at, per peer.
@@ -409,8 +418,25 @@ export const App = () => {
     const networkProvider = useMemo(() => new NetworkDataProvider({ catalogue: networkCatalogue, ask: (question) => data.fetch(question) }), [networkCatalogue, data])
     const networkResource = useMemo(() => new NetworkRpcDataProvider({ provider: networkProvider }), [networkProvider])
     const securityResource = useMemo(
-        () => new SecurityDataProvider({ peers, descriptions: known, refused: describeRefusals }),
-        [peers, known, describeRefusals]
+        () =>
+            new SecurityDataProvider({
+                peers,
+                descriptions: known,
+                refused: describeRefusals,
+                ...(linkIdentity
+                    ? {
+                          observer: {
+                              authentication: linkIdentity.authentication.value,
+                              authenticationEvidence: linkIdentity.authentication.evidence,
+                              source: linkIdentity.source.value,
+                              sourceEvidence: linkIdentity.source.evidence,
+                              ...(linkIdentity.identity?.name ? { identity: linkIdentity.identity.name } : {}),
+                              ...(linkIdentity.identity?.roles ? { roles: linkIdentity.identity.roles } : {})
+                          }
+                      }
+                    : {})
+            }),
+        [peers, known, describeRefusals, linkIdentity]
     )
 
     // The network resource is the console's primary screen, so its structural catalogue is always
@@ -862,6 +888,7 @@ export const App = () => {
                                     network={network}
                                     operations={operations}
                                     relay={relay}
+                                    elevations={callingDescription?.elevated}
                                     initiallyOpen
                                 />
                             </section>

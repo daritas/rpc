@@ -29,6 +29,35 @@ test('keeps an undescribed or refused peer unknown without exposing the refusal'
     t.false(JSON.stringify(rows).includes('secret'))
 })
 
+test('states what is known on the browser link without treating a routed source claim as identity', (t) => {
+    const anonymous = new SecurityDataProvider({ peers: [], descriptions: {} })
+    const unknown = rowsOf(list(anonymous)).find((row) => row.category === 'identity')
+    t.is(unknown?.evidence, 'unknown')
+    t.is(unknown?.authentication, undefined)
+
+    const authenticated = new SecurityDataProvider({
+        peers: [],
+        descriptions: {},
+        observer: {
+            authentication: 'authenticated',
+            authenticationEvidence: 'link',
+            source: 'page-7',
+            sourceEvidence: 'link',
+            identity: 'anders',
+            roles: ['operator']
+        }
+    })
+    const known = rowsOf(list(authenticated)).find((row) => row.category === 'identity')
+    t.like(known, { evidence: 'link', authentication: 'authenticated', source: 'page-7', identity: 'anders', roles: ['operator'] })
+
+    const routed = new SecurityDataProvider({
+        peers: [],
+        descriptions: {},
+        observer: { authentication: 'none', authenticationEvidence: 'link', source: 'page-claim', sourceEvidence: 'unknown' }
+    })
+    t.is(rowsOf(list(routed))[0].evidence, 'mixed', 'known lack of authentication does not promote the source claim')
+})
+
 test('derives conservative transport and elevation findings with evidence intact', (t) => {
     const provider = new SecurityDataProvider({
         peers: ['alpha'],
@@ -101,14 +130,16 @@ test('tree scopes findings and peer sections without turning leaves into branche
     })
     const roots = provider.dataRequest('getChildren', ['security'], {}) as RpcGetChildrenResult
     t.deepEqual(roots.data, [
+        { name: 'Current console link', authentication: 'unknown', evidence: 'unknown' },
         { name: 'Findings', findings: 1 },
         { name: 'Peers', peers: 1 }
     ])
-    t.deepEqual(roots.grouping, [true, true])
-    t.deepEqual(roots.hasChildren, [false, true])
+    t.deepEqual(roots.grouping, [true, true, true])
+    t.deepEqual(roots.hasChildren, [false, false, true])
 
-    const peers = provider.dataRequest('getChildren', ['security'], { parentId: roots.ids[1] }) as RpcGetChildrenResult
+    const peers = provider.dataRequest('getChildren', ['security'], { parentId: roots.ids[2] }) as RpcGetChildrenResult
     const alpha = peers.ids[0]
+    t.false(rowsOf(list(provider, roots.ids[2])).some((row) => row.category === 'identity'))
     const sections = provider.dataRequest('getChildren', ['security'], { parentId: alpha }) as RpcGetChildrenResult
     t.deepEqual(sections.data.map((value) => (value as { name: string }).name), ['Transports', 'Elevations'])
     const elevationBranch = sections.ids[1]
