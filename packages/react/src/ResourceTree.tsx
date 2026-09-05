@@ -457,7 +457,8 @@ export const BranchTable = ({
     onAction,
     onMove,
     onEdit,
-    typedColumns
+    typedColumns,
+    glyphs = true
 }: {
     resource: readonly string[]
     columns: readonly string[]
@@ -530,6 +531,16 @@ export const BranchTable = ({
         /** Which declared type a row answers to. A row it cannot place draws nothing typed. */
         readonly typeOf: (row: unknown) => string | undefined
     }
+    /**
+     * Whether a cell carries its type's mark as well as its type's colour.
+     *
+     * Defaults to on, and the default is the argument. A reader who cannot see the hue has no way
+     * of knowing a setting exists - the grid looks to them like one encoded in nothing - while a
+     * reader who finds the marks noisy is inconvenienced rather than shut out, and goes and finds
+     * the checkbox. Turning it off is therefore something a host may offer, never something this
+     * component decides.
+     */
+    glyphs?: boolean
 }) => {
     const [page, setPage] = useState(0)
     const [typed, setTyped] = useState('')
@@ -767,7 +778,7 @@ export const BranchTable = ({
                 to reach the bottom of the page to press - which is the position they were using it
                 to leave. */}
             <div className="branch-table-scroll">
-                <table className="branch-table">
+                <table className={glyphs ? 'branch-table' : 'branch-table typed-plain'}>
                     <thead>
                         <tr>
                             {typedLayout

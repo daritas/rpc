@@ -69,3 +69,21 @@ The glyph set. Geometric marks are the obvious family, filled ones read better t
 Whether the stack compacts, which is a one-line change in the other direction and should be made only after looking at seven security kinds at once.
 
 Whether the network grid's source triple, rather than `kind`, is what the type axis reads there. It probably is, since rows from different sources often carry no `kind` at all, but that is a question about one grid and not about the layout.
+
+## What building the first three settled
+
+*Appended after the layout rule, the stacked heading and the palette were built. The section above is left as it was written; this is what changed on contact.*
+
+**The glyph set did not need the fixed-font trial it was waiting for, because the constraint dissolved.** The worry was real - the geometric marks are Ambiguous East Asian Width, so a fallback font may draw one double-width and shift every column after it - but choosing marks carefully is the wrong answer to it. An `inline-block` of exactly `1ch` advances by `1ch` whatever the font does with what is inside it, so a wide glyph spills into its own margin rather than into the layout. The set is then free to be chosen on how it reads: four filled marks and then the same four hollow, because channels are handed out in order, a filled mark reads better than an outline at eleven pixels, and fill becomes a cue of its own between the first four types and the second four. If the fixed width is ever taken off, this is what goes with it.
+
+**A type whose every field is shared takes no channel at all.** It was not in the plan and it falls out of the rule: such a type only ever draws in plain columns, where one label means there is nothing to bind, so marking its rows would be ink spent on a distinction nobody has to make - and it would cost every stacked heading on the page one permanently blank line.
+
+**A row of a type the table was not told about draws a blank row at the full width**, rather than falling back to the untyped columns. The fallback was the first thing written and it is wrong: it gives that one row a different number of cells from the header above it, which is a broken table and not a missing value.
+
+**A cell empty because its type has no such field now says so**, faintly and separately from a cell empty because the value is. Only the layout knows the difference, and in a union of columns most blanks are the first kind - so this is a good part of the readability the whole exercise is for, and it was not in the plan either. It is drawn as a background *image* so that it composes with the selection tint rather than fighting it.
+
+**Selection gave up its text colour**, keeping its background tint and its edge. In a table of several types that channel is carrying which type a cell belongs to, and a selection that overrode it would erase the binding for exactly the row somebody is looking hardest at.
+
+**Eight channels, and a ninth type is deliberately left muted and unmarked.** Seven is the widest real case. A palette that wrapped round would give two types the same mark and hide what the ninth is actually telling you, which is that a single branch holding nine shapes of row has a scoping problem.
+
+Still open: whether the stack compacts, and whether the network grid reads its source triple rather than `kind` as the type axis. Both are unchanged by any of the above.
