@@ -139,3 +139,21 @@ export const fieldFor = (column: TypedColumn, type: string): string | undefined 
 /** How a cell of this type is marked, where it is marked at all. Absent means a plain column. */
 export const channelFor = (column: TypedColumn, type: string): number | undefined =>
     column.kind === 'stacked' ? column.stack.find((label) => label.type === type && label.field !== undefined)?.channel : undefined
+
+/** One cell's whole question, answered once per type rather than once per row. */
+export interface TypedCell {
+    /** The field a row of this type draws here. Absent means the type has nothing in this column. */
+    readonly field?: string
+    /** How the cell is marked. Absent on a plain column and on a type's blank line, which is right. */
+    readonly channel?: number
+}
+
+/**
+ * What a row of one type draws, column by column.
+ *
+ * Answered per type rather than per row because a page holds many rows of few types - the work is
+ * proportional to the types on screen, and a table of three hundred rows resolves three lookups
+ * rather than three hundred.
+ */
+export const cellsFor = (layout: TypedColumnLayout, type: string): readonly TypedCell[] =>
+    layout.columns.map((column) => ({ field: fieldFor(column, type), channel: channelFor(column, type) }))

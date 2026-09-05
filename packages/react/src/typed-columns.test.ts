@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { channelFor, fieldFor, typedColumnLayout, type TypedColumn, type TypedFields } from './typed-columns.js'
+import { cellsFor, channelFor, fieldFor, typedColumnLayout, type TypedColumn, type TypedFields } from './typed-columns.js'
 
 /**
  * The rule that decides the shape of a grid holding rows of several types.
@@ -146,5 +146,28 @@ describe('the awkward inputs', () => {
             { type: 'a', fields: ['one'] }
         ])
         expect(layout.stacked).toEqual([{ type: 'a', channel: 0 }])
+    })
+})
+
+describe('what a row of one type draws', () => {
+    const layout = typedColumnLayout([
+        { type: 'a', fields: ['id', 'one', 'two'] },
+        { type: 'b', fields: ['id', 'only'] }
+    ])
+
+    test('is one answer per column, in the columns own order', () => {
+        expect(cellsFor(layout, 'a')).toEqual([{ field: 'id' }, { field: 'one', channel: 0 }, { field: 'two', channel: 0 }])
+    })
+
+    test('with the columns it has nothing in left empty and unmarked', () => {
+        // Which is not the same as a field it has and left empty, and only the layout knows which.
+        expect(cellsFor(layout, 'b')).toEqual([{ field: 'id' }, { field: 'only', channel: 1 }, {}])
+    })
+
+    test('and a type nobody declared draws nothing at all, at the full width', () => {
+        // A row the table cannot place must still have as many cells as the header above it.
+        const absent = cellsFor(layout, 'never-declared')
+        expect(absent).toHaveLength(layout.columns.length)
+        expect(absent.every(({ field }) => field === undefined)).toBe(true)
     })
 })
