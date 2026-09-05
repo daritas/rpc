@@ -124,6 +124,13 @@ those method names and their current `{ holder?, expiresAt?, generation }`. It i
 query and intentionally separate from `describe()`: callers denied this query learn no holder, and
 caches cannot turn an expired lease into current posture.
 
+Each known authority row has ordinary DataProvider actions for acquiring or renewing a bounded
+lease and releasing the console's own lease. Their first argument is the opaque row id, exactly as
+for every DataProvider action; the console validates it against the currently disclosed authority
+records, then invokes the component's existing `$acquire` or `$release`. The target still authorizes
+those calls. The open console offers one-, five-, and fifteen-minute leases and no takeover.
+Unknown authority placeholders are deliberately not actionable.
+
 An offline transition clears live authority immediately. Existing component values are retained by
 their own channel as explicitly stale values, not presented as current posture. When the same peer
 name returns, the console invalidates cached descriptions, refusals, and authority before

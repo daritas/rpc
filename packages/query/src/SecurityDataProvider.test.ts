@@ -1,6 +1,6 @@
 import test from 'ava'
 import type { RpcGetChildrenResult, RpcGetListResult, ServerDescription } from '@source-repo/rpc'
-import { SECURITY_RESOURCE, SecurityDataProvider, type SecurityRow } from './SecurityDataProvider.js'
+import { SECURITY_RESOURCE, SecurityDataProvider, securityAuthorityRowId, type SecurityRow } from './SecurityDataProvider.js'
 
 const described = (changes: Partial<ServerDescription> = {}): ServerDescription => ({
     name: 'alpha',
@@ -18,6 +18,10 @@ const rowsOf = (answer: RpcGetListResult) => answer.data as SecurityRow[]
 test('declares one ordinary tree resource for the generic grid', (t) => {
     const provider = new SecurityDataProvider({ peers: [], descriptions: {} })
     t.deepEqual(provider.dataResources(), [SECURITY_RESOURCE])
+    t.deepEqual(SECURITY_RESOURCE.actions, [
+        { method: 'acquireAuthority', label: 'acquire', confirm: true, kinds: ['security.authority'] },
+        { method: 'releaseAuthority', label: 'release mine', confirm: true, kinds: ['security.authority'] }
+    ])
 })
 
 test('keeps an undescribed or refused peer unknown without exposing the refusal', (t) => {
@@ -249,6 +253,14 @@ test('security events and live authority leases are ordinary scoped rows', (t) =
         evidence: 'peer',
         timeframe: 'current'
     })
+    const authorityPage = list(provider, sections.ids[2])
+    t.is(authorityPage.ids[0], securityAuthorityRowId('alpha', 'line'), 'the action subject names the target component without exposing it to the viewer')
+})
+
+test('an unknown authority placeholder is not an actionable authority row', (t) => {
+    const provider = new SecurityDataProvider({ peers: ['alpha'], descriptions: { alpha: described() } })
+    const unknown = rowsOf(list(provider)).find((row) => row.category === 'authority')
+    t.like(unknown, { kind: 'security.authority-unknown', evidence: 'unknown' })
 })
 
 test('filtering, sorting, paging and row preview use the DataProvider contract', (t) => {

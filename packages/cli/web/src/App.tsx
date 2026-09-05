@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { RpcServer, TransportEvent, type DescribedComponentAuthority, type RpcGetListParams, type RpcGetManyParams, type RpcGetOneParams, type RpcGetOneResult, type RpcGetListResult, type RpcGetManyResult, type RpcSchema } from '@source-repo/rpc'
-import { NetworkDataProvider, NetworkRpcDataProvider, NetworkScopeCatalogue, RpcDataCache, SECURITY_RESOURCE, SecurityDataProvider, rpcOnlineFrom } from '@source-repo/query'
+import { NetworkDataProvider, NetworkRpcDataProvider, NetworkScopeCatalogue, RpcDataCache, SECURITY_RESOURCE, SecurityDataProvider, rpcOnlineFrom, type SecurityRow } from '@source-repo/query'
 import { RpcOperations } from '@source-repo/rpc'
 import { pageName } from './peerName'
 import { Chat } from './Chat'
@@ -11,7 +11,7 @@ import { ChatMessage, ChatService } from './ChatService'
 import chatContract from './chat.types.json'
 import { ComponentPanel } from './ComponentPanel'
 import { ContextPanel } from './ContextPanel'
-import { asWatch, ConsoleService, DataProviderValueGrid, holds, DescribedEvent, fetchConsoleName, NetworkProblem, NetworkValueGrid, PeerChange, PeerStructure, ServerDescription, socketPath, StreamedEvent, TappedFrame, typeText, withNode, type ConsoleLinkIdentity, type NetworkMethodSelection, type SecurityEvent, type Watch, type WatchNode } from '@source-repo/react'
+import { asWatch, ConsoleService, DataProviderValueGrid, holds, DescribedEvent, fetchConsoleName, NetworkProblem, NetworkValueGrid, PeerChange, PeerStructure, ServerDescription, socketPath, StreamedEvent, TappedFrame, typeText, withNode, type ConsoleLinkIdentity, type DescribedAction, type NetworkMethodSelection, type SecurityEvent, type Watch, type WatchNode } from '@source-repo/react'
 import { throttled } from '@source-repo/search'
 import { MethodPanel } from './MethodPanel'
 import { Operations } from './Operations'
@@ -313,6 +313,14 @@ type Workspace = 'network' | 'security' | 'traffic' | 'problems' | 'presence' | 
 /** Detail and interaction for the scope selected in the Network workspace. */
 type SideTab = 'actions' | 'chat' | 'events'
 
+const AUTHORITY_LEASES = [60_000, 5 * 60_000, 15 * 60_000] as const
+
+type AuthorityAction = {
+    readonly action: DescribedAction
+    readonly id: string
+    readonly row: SecurityRow
+}
+
 export const App = () => {
     const { service, status, me, linkIdentity, securityEvents, events, peerChange, said, frames, problems, peer, data, operations, relay } = useConsole()
     const [chats, setChats] = useState<{ [peer: string]: ChatMessage[] }>({})
@@ -345,6 +353,11 @@ export const App = () => {
     const [describeRefusals, setDescribeRefusals] = useState<{ readonly [peer: string]: string }>({})
     /** Live and intentionally short-lived: authority is arbitration state, not description data. */
     const [authorities, setAuthorities] = useState<Readonly<Record<string, readonly DescribedComponentAuthority[] | undefined>>>({})
+    /** A declared Security row action waiting for explicit confirmation in the console's own UI. */
+    const [authorityAction, setAuthorityAction] = useState<AuthorityAction | undefined>()
+    const [authorityTtl, setAuthorityTtl] = useState<number>(AUTHORITY_LEASES[0])
+    const [authorityBusy, setAuthorityBusy] = useState(false)
+    const [authorityOutcome, setAuthorityOutcome] = useState<{ ok: boolean; text: string } | undefined>()
     /** Which describes are in flight, so two panes asking at once ask once. A ref: renders must not lose it. */
     const asking = useRef(new Set<string>())
     const [selected, setSelected] = useState<string | null>(null)
@@ -443,6 +456,55 @@ export const App = () => {
             }),
         [peers, known, describeRefusals, authorities, securityEvents, linkIdentity]
     )
+
+    /**
+     * Open a confirmation from the row the provider actually returned. The opaque id stays opaque
+     * to the viewer; its provider resolves the peer and namespace, while the console service later
+     * validates the same id before it sends anything to the target.
+     */
+    const openAuthorityAction = async (action: DescribedAction, id: string) => {
+        const answer = (await securityResource.dataRequest('getOne', SECURITY_RESOURCE.path, { id })) as RpcGetOneResult
+        const row = answer.data as SecurityRow | undefined
+        if (row?.kind !== 'security.authority' || !row.namespace) return
+        setAuthorityOutcome(undefined)
+        setAuthorityAction({ action, id, row })
+    }
+
+    const runAuthorityAction = async () => {
+        if (!service || !authorityAction) return
+        const namespace = authorityAction.row.namespace
+        if (!namespace) return
+        const { action, id, row } = authorityAction
+        const acquiring = action.method === 'acquireAuthority'
+        if (!acquiring && action.method !== 'releaseAuthority') return
+        setAuthorityBusy(true)
+        setAuthorityOutcome(undefined)
+        try {
+            const result = await operations.relayed(
+                {
+                    via: relay,
+                    target: row.peer,
+                    namespace,
+                    method: acquiring ? '$acquire' : '$release',
+                    semantics: 'idempotent-command'
+                },
+                () => (acquiring ? service.acquireAuthority(id, authorityTtl) : service.releaseAuthority(id))
+            )
+            if (result.authorities) setAuthorities((current) => ({ ...current, [result.peer]: result.authorities }))
+            const text =
+                result.status === 'acquired'
+                    ? `${result.peer}/${result.namespace} is held by ${result.holder ?? relay}${result.expiresAt ? ` until ${new Date(result.expiresAt).toLocaleString()}` : ''}.`
+                    : result.status === 'released'
+                      ? `${result.peer}/${result.namespace} was released.`
+                      : `${relay} was not holding ${result.peer}/${result.namespace}; nothing changed.`
+            setAuthorityOutcome({ ok: true, text })
+        } catch (failure) {
+            const error = failure as { code?: string; message?: string }
+            setAuthorityOutcome({ ok: false, text: `${error.code ? `${error.code}: ` : ''}${error.message ?? String(failure)}` })
+        } finally {
+            setAuthorityBusy(false)
+        }
+    }
 
     // The network resource is the console's primary screen, so its structural catalogue is always
     // populated. Descriptions remain bounded by the shared throttler above.
@@ -874,7 +936,44 @@ export const App = () => {
                         <span className="muted">reported posture, explicit unknowns and derived findings across the visible network</span>
                     </header>
                     {peers.length === 0 && <p className="muted">Waiting for a peer to announce itself…</p>}
-                    <DataProviderValueGrid provider={securityResource} resource={SECURITY_RESOURCE} pageSize={50} />
+                    {authorityAction && (
+                        <section className="authority-control" aria-label="Authority action confirmation">
+                            <span>
+                                <code>{relay}</code>{' '}
+                                {authorityAction.action.method === 'acquireAuthority' ? 'will request authority over' : 'will release its authority over'}{' '}
+                                <code>
+                                    {authorityAction.row.peer}/{authorityAction.row.namespace}
+                                </code>
+                                .
+                            </span>
+                            {authorityAction.action.method === 'acquireAuthority' && (
+                                <label>
+                                    lease{' '}
+                                    <select value={authorityTtl} onChange={(event) => setAuthorityTtl(Number(event.target.value))} disabled={authorityBusy}>
+                                        {AUTHORITY_LEASES.map((ttl) => (
+                                            <option key={ttl} value={ttl}>
+                                                {ttl / 60_000} min
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            )}
+                            <button className="primary" onClick={() => void runAuthorityAction()} disabled={authorityBusy}>
+                                {authorityBusy ? 'sending…' : authorityAction.action.method === 'acquireAuthority' ? 'acquire / renew' : 'release mine'}
+                            </button>
+                            <button className="toggle" onClick={() => setAuthorityAction(undefined)} disabled={authorityBusy}>
+                                close
+                            </button>
+                            {authorityAction.action.method === 'acquireAuthority' && <span className="muted">No takeover is offered here.</span>}
+                            {authorityOutcome && <span className={authorityOutcome.ok ? 'authority-outcome' : 'authority-outcome bad'}>{authorityOutcome.text}</span>}
+                        </section>
+                    )}
+                    <DataProviderValueGrid
+                        provider={securityResource}
+                        resource={SECURITY_RESOURCE}
+                        pageSize={50}
+                        onAction={(action, id) => void openAuthorityAction(action, id)}
+                    />
                 </div>
 
                 {workspace === 'operations' && <Operations operations={operations} />}

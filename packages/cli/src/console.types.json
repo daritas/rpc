@@ -3218,6 +3218,68 @@
         }
       }
     },
+    "ConsoleAuthorityActionResult": {
+      "kind": "object",
+      "fields": {
+        "peer": {
+          "type": {
+            "kind": "string"
+          }
+        },
+        "namespace": {
+          "type": {
+            "kind": "string"
+          }
+        },
+        "status": {
+          "type": {
+            "kind": "union",
+            "options": [
+              {
+                "kind": "literal",
+                "value": "acquired"
+              },
+              {
+                "kind": "literal",
+                "value": "released"
+              },
+              {
+                "kind": "literal",
+                "value": "not-holder"
+              }
+            ]
+          }
+        },
+        "holder": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "expiresAt": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "generation": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "authorities": {
+          "type": {
+            "kind": "array",
+            "items": {
+              "kind": "ref",
+              "name": "DescribedComponentAuthority"
+            }
+          },
+          "optional": true
+        }
+      }
+    },
     "TapFilter": {
       "kind": "object",
       "fields": {
@@ -3598,6 +3660,49 @@
             }
           },
           "semantics": "query"
+        },
+        "acquireAuthority": {
+          "params": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "union",
+              "options": [
+                {
+                  "kind": "number"
+                },
+                {
+                  "kind": "literal",
+                  "value": null
+                }
+              ]
+            }
+          ],
+          "paramNames": [
+            "id",
+            "ttlMs"
+          ],
+          "returns": {
+            "kind": "ref",
+            "name": "ConsoleAuthorityActionResult"
+          },
+          "semantics": "idempotent-command"
+        },
+        "releaseAuthority": {
+          "params": [
+            {
+              "kind": "string"
+            }
+          ],
+          "paramNames": [
+            "id"
+          ],
+          "returns": {
+            "kind": "ref",
+            "name": "ConsoleAuthorityActionResult"
+          },
+          "semantics": "idempotent-command"
         },
         "call": {
           "params": [

@@ -258,6 +258,9 @@ export interface ConsoleService {
     identity(): Promise<ConsoleLinkIdentity>
     /** Current authority leases, when the target permits this observer to read them. */
     authorities(peer: string): Promise<DescribedComponentAuthority[]>
+    /** Invoke the Security resource's bounded authority actions under the console's outbound identity. */
+    acquireAuthority(id: string, ttlMs?: number): Promise<ConsoleAuthorityActionResult>
+    releaseAuthority(id: string): Promise<ConsoleAuthorityActionResult>
     /** Bounded operational security diagnostics; not a durable audit log. */
     securityEvents(): Promise<{ events: SecurityEvent[] }>
     peers(): Promise<{
@@ -306,14 +309,45 @@ export interface ConsoleLinkIdentity {
 export interface SecurityEvent {
     id: number
     at: number
-    kind: 'authentication-failure' | 'signature-failure' | 'transport-rejection' | 'authorization-refused' | 'authority-refused'
-    severity: 'high' | 'medium'
-    evidence: 'link'
+    kind:
+        | 'authentication-failure'
+        | 'signature-failure'
+        | 'transport-rejection'
+        | 'authorization-refused'
+        | 'authority-refused'
+        | 'ai-access'
+        | 'authority-change'
+        | 'elevation-change'
+        | 'transport-change'
+    severity: 'high' | 'medium' | 'low'
+    evidence: 'link' | 'peer'
     peer?: string
     target?: string
     namespace?: string
     method?: string
+    effect?: string
+    grant?: string
+    allowed?: boolean
+    capability?: string
+    holder?: string
+    previousHolder?: string
+    expiresAt?: number
+    generation?: number
+    until?: number
+    transport?: string
+    previous?: string
+    current?: string
     code: string
+}
+
+export interface ConsoleAuthorityActionResult {
+    peer: string
+    namespace: string
+    status: 'acquired' | 'released' | 'not-holder'
+    holder?: string
+    expiresAt?: number
+    generation?: number
+    authorities?: DescribedComponentAuthority[]
 }
 
 export interface StreamedEvent {

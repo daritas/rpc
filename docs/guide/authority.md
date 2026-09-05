@@ -50,3 +50,10 @@ separate from `describe()` because a lease is live state and a contract is struc
 The query is authorized like every other `msgrpc` method; refusal discloses no holder. The web
 console polls it only while the Security workspace or a relevant method form is visible, and shows
 unknown rather than a stale lease when it cannot be read.
+
+On a known authority row, the console exposes **acquire** and **release mine** as ordinary declared
+DataProvider actions. Acquisition is bounded to a one-, five-, or fifteen-minute lease and doubles
+as renewal when the console already holds the component. Release remains the existing idempotent
+`$release`; takeover is not offered. Both calls run as the console's outbound identity and remain
+subject to the target's `authorize()` decision. An unknown or invented row id is not an alternate
+way to address a component.

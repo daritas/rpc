@@ -76,6 +76,12 @@ The open console may acquire and release existing component authority because th
 already-authorized operational actions. Lowering or closing a temporary elevation can follow only
 if an explicit authorized RPC operation exists.
 
+This authority slice is implemented as declared Security DataProvider row actions. A known row can
+acquire or renew a bounded one-, five-, or fifteen-minute lease and release only authority held by
+the console identity. The row id is validated against the target's current disclosed authority
+records before the existing `$acquire` or `$release` is invoked. Unknown rows and takeover have no
+action.
+
 Creating identities, issuing or revoking tokens, changing grants, opening elevations, editing policy
 and managing certificates remain configuration/CLI operations in the open-source console.
 
@@ -162,7 +168,9 @@ authorized `msgrpc.security` event. The bridge has no target-side history and ca
 codes and allow-listed identifiers/state, so this remains diagnostic and does not claim
 completeness or durable audit semantics. Public transport posture is now compared across later
 descriptions, including same-name peer replacement, and emits bounded `transport-change` history.
-The DataProvider labels derived posture `current` and observed transitions `history`.
+The DataProvider labels derived posture `current` and observed transitions `history`. Known
+authority rows now reuse `$acquire` and `$release` through declared actions with bounded lease
+choices, an explicit confirmation, immediate state refresh, and no takeover surface.
 
 ### 5. End-to-end fixture
 

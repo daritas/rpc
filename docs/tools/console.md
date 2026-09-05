@@ -313,6 +313,14 @@ leases change without changing a contract. A peer built before `msgrpc.authoriti
 refuses it, therefore shows authority as unknown rather than retaining an old holder. See
 [Command authority](../guide/authority.md#visible-to-everyone) for the target-side rules.
 
+Known authority rows declare **acquire** and **release mine** actions through the same DataProvider
+action metadata as any other row. An action opens a confirmation naming the console identity and
+target component. Acquisition offers bounded one-, five-, or fifteen-minute leases; it acquires a
+free component or renews one this console already holds. Release is idempotent and can release only
+this console's lease. Neither action bypasses the target's ordinary authorization, and the open
+console deliberately offers no takeover. Unknown authority placeholders have no controls. The
+returned live authority state replaces the row immediately rather than waiting for the next poll.
+
 Going offline immediately clears that peer's live authority claim. Component values already
 observed follow the component channel's different rule: they remain readable and are marked stale,
 because “last saw 80 °C before the link failed” is useful while “80 °C now” is false. If the peer
@@ -341,7 +349,8 @@ posture. This is an operational debugging buffer, not a complete or tamper-evide
 The executable acceptance fixture covers an anonymous browser link, authenticated viewer/operator/
 engineer/AI identities, name impersonation, the effect ladder, an expiring AI grant and elevation,
 authority contention and expiry, reconnect, signed MQTT, an unsigned MQTT rejection, and secret
-redaction from every browser-facing answer:
+redaction from every browser-facing answer. It also acquires and releases authority through the
+Security row-action path and proves that an invented row id cannot become a general target call:
 
 ```sh
 npm run test:security --workspace @source-repo/rpc-cli

@@ -16,6 +16,7 @@ import {
     type RpcIdentity,
     type ServerDescription
 } from '@source-repo/rpc'
+import { securityAuthorityRowId } from '@source-repo/query'
 import { consoleIdentityPath, startConsole, type ConsoleService } from './console.js'
 
 /**
@@ -154,6 +155,16 @@ test.serial('the console explains an authenticated plant without acquiring its u
     // Opened after describe(), because that call also installs the console's safe operational-event
     // subscription. Both opening and expiry are therefore observable without timing startup.
     plant.elevate({ capability: 'debug.endpoint', reason: 'security fixture', until: Date.now() + 1500, grantedBy: identities.engineer.name })
+
+    const authorityId = securityAuthorityRowId(target, 'cell')
+    const consoleLease = await browser.remote.acquireAuthority(authorityId, 1000)
+    t.like(consoleLease, { peer: target, namespace: 'cell', status: 'acquired', holder: consoleName })
+    t.is(consoleLease.authorities?.[0].authority.holder, consoleName, 'the action refreshes the live authority projection')
+    const consoleRelease = await browser.remote.releaseAuthority(authorityId)
+    t.like(consoleRelease, { peer: target, namespace: 'cell', status: 'released' })
+    t.is(consoleRelease.authorities?.[0].authority.holder, undefined)
+    const inventedAuthority = await t.throwsAsync(browser.remote.acquireAuthority(JSON.stringify(['security-row', 'authority', target, 'component', 'missing']), 1000))
+    t.is((inventedAuthority as { code?: string })?.code, 'InvalidParams', 'an invented row id cannot turn the action into a general target call')
 
     const clients: RpcClient[] = []
     const connect = async (identity: RpcIdentity, token: string) => {

@@ -233,6 +233,11 @@ remaining parameters come from the method contract. Authorization, effects, auth
 semantics remain those of that RPC method. A DataProvider action does not create a second action
 protocol.
 
+The same rule applies to an in-process provider rendered through `DataProviderValueGrid`: declared
+actions are shown only when the embedding host supplies an action dispatcher. A read-only embedding
+gets no inert buttons. The dispatcher still receives the declared method and opaque row id; it does
+not infer a target from the row's presentation fields.
+
 A reference field contains the target row's id. Its target resource must be declared by the same
 component and should implement `getMany`. Do not declare a reference to an arbitrary non-id field;
 there is no lookup verb that could follow it truthfully.

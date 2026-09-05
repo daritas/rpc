@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { extname, join, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { EventEmitter } from 'events'
-import { MqttTransport, RpcServer, SCHEMA_VERSION, TransportEvent, rpc, rpcNamespace, type DescribedComponentAuthority, type RelayedFrame, type RpcInvocationHandle, type RpcSchema, type RpcTransportDescription, type ServerDescription } from '@source-repo/rpc'
+import { MqttTransport, RpcServer, SCHEMA_VERSION, TransportEvent, rpc, rpcNamespace, type DescribedComponentAuthority, type RelayedFrame, type RpcComponentAuthority, type RpcInvocationHandle, type RpcSchema, type RpcTransportDescription, type ServerDescription } from '@source-repo/rpc'
 import { networkTransports, type NetworkOptions } from './network.js'
 import { BusService, DEFAULT_TAP_TTL, type TapFilter, type TappedFrame } from './bus.js'
 // The tap's own contract, merged with the console's below: one server, and a schema has to describe
@@ -181,6 +181,17 @@ export interface SecurityEvent {
     code: string
 }
 
+export interface ConsoleAuthorityActionResult {
+    peer: string
+    namespace: string
+    status: 'acquired' | 'released' | 'not-holder'
+    holder?: string
+    expiresAt?: number
+    generation?: number
+    /** Fresh live state when the follow-up query remains authorized. */
+    authorities?: DescribedComponentAuthority[]
+}
+
 /**
  * A frame a transport refused or could not deliver, a name two peers claimed, or a link that
  * failed - the four things that otherwise reach a caller only as an unexplained timeout.
@@ -220,6 +231,26 @@ const operationalCodes = {
 
 const safeEventString = (value: unknown): string | undefined => (typeof value === 'string' && value.length <= 256 ? value : undefined)
 const safeEventNumber = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
+
+/** Decode only the authority row identity the Security DataProvider owns. */
+const authorityTargetOf = (id: string): { peer: string; namespace: string } | undefined => {
+    try {
+        const value: unknown = JSON.parse(id)
+        if (
+            !Array.isArray(value) ||
+            value.length !== 5 ||
+            value[0] !== 'security-row' ||
+            value[1] !== 'authority' ||
+            typeof value[2] !== 'string' ||
+            value[3] !== 'component' ||
+            typeof value[4] !== 'string'
+        )
+            return undefined
+        return { peer: value[2], namespace: value[4] }
+    } catch {
+        return undefined
+    }
+}
 
 type TransportPosture = { label: string; fields: Readonly<Record<string, string>> }
 
@@ -618,6 +649,54 @@ export class ConsoleService extends EventEmitter {
     async authorities(peer: string): Promise<DescribedComponentAuthority[]> {
         const proxy = await this.reach(peer).proxy<{ authorities: () => Promise<DescribedComponentAuthority[]> }>('msgrpc', peer)
         return await proxy.authorities()
+    }
+
+    /** Resolve an action subject against current disclosed authority rows before commanding it. */
+    private async authorityTarget(id: string) {
+        const target = authorityTargetOf(id)
+        if (!target) throw Object.assign(new Error('the action subject is not a Security authority row'), { code: 'InvalidParams' })
+        const current = await this.authorities(target.peer)
+        if (!current.some((authority) => authority.namespace === target.namespace))
+            throw Object.assign(new Error(`${target.peer}/${target.namespace} is not a currently disclosed authority record`), { code: 'InvalidParams' })
+        return target
+    }
+
+    /** Acquire or renew a bounded component lease using the target's existing `$acquire`. */
+    @rpc({ semantics: 'idempotent-command' })
+    async acquireAuthority(id: string, ttlMs = 60_000): Promise<ConsoleAuthorityActionResult> {
+        const target = await this.authorityTarget(id)
+        const answer = await this.call(target.peer, target.namespace, '$acquire', [ttlMs])
+        if (answer.error)
+            throw Object.assign(new Error(`${target.peer}/${target.namespace} refused authority acquisition${answer.code ? `: ${answer.code}` : ''}`), {
+                code: answer.code
+            })
+        const authority = answer.result as RpcComponentAuthority
+        const authorities = await this.authorities(target.peer).catch(() => undefined)
+        return {
+            ...target,
+            status: 'acquired',
+            ...(authority.holder ? { holder: authority.holder } : {}),
+            ...(authority.expiresAt !== undefined ? { expiresAt: authority.expiresAt } : {}),
+            ...(authority.generation !== undefined ? { generation: authority.generation } : {}),
+            ...(authorities ? { authorities } : {})
+        }
+    }
+
+    /** Release only authority held by this console identity, using the idempotent `$release`. */
+    @rpc({ semantics: 'idempotent-command' })
+    async releaseAuthority(id: string): Promise<ConsoleAuthorityActionResult> {
+        const target = await this.authorityTarget(id)
+        const answer = await this.call(target.peer, target.namespace, '$release')
+        if (answer.error)
+            throw Object.assign(new Error(`${target.peer}/${target.namespace} refused authority release${answer.code ? `: ${answer.code}` : ''}`), {
+                code: answer.code
+            })
+        const authorities = await this.authorities(target.peer).catch(() => undefined)
+        return {
+            ...target,
+            status: answer.result === 'ok' ? 'released' : 'not-holder',
+            ...(authorities ? { authorities } : {})
+        }
     }
 
     @rpc

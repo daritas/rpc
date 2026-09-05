@@ -48,7 +48,7 @@ export const DataProviderValueGrid = ({
     pageSize = 50,
     preview: initialPreview = true,
     onScope,
-    actionsFor = () => undefined,
+    actionsFor,
     onAction
 }: {
     provider: RpcDataProvider
@@ -72,6 +72,10 @@ export const DataProviderValueGrid = ({
     const [preview, setPreview] = useState(initialPreview)
     const [size, setSize] = useState(pageSize)
     const component = useMemo(() => localComponent(resource), [resource])
+    // A local provider has no remote component description to cross-check against. Its host is the
+    // action dispatcher, so declared actions are offered only when that dispatcher is present; a
+    // read-only embedding never gets buttons that cannot do anything.
+    const offeredActions = actionsFor ?? (() => (onAction ? component.resources?.[0]?.actions : undefined))
     const question = (method: RpcQuestion['method'], params: RpcQuestion['params']): RpcQuestion => ({
         target: '$local-data-view',
         namespace: '$local-data-view',
@@ -112,7 +116,7 @@ export const DataProviderValueGrid = ({
             }
             rowQuestion={(_path, id) => question('getOne', { id })}
             manyQuestion={(_path, ids) => question('getMany', { ids })}
-            actionsFor={actionsFor}
+            actionsFor={offeredActions}
             onAction={onAction}
         />
     )

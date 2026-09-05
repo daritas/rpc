@@ -34,7 +34,15 @@ export type SecuritySeverity = 'high' | 'medium' | 'low' | 'unknown'
 
 export interface SecurityRow {
     readonly name: string
-    readonly kind: 'security.identity' | 'security.peer' | 'security.transport' | 'security.elevation' | 'security.authority' | 'security.event' | 'security.finding'
+    readonly kind:
+        | 'security.identity'
+        | 'security.peer'
+        | 'security.transport'
+        | 'security.elevation'
+        | 'security.authority'
+        | 'security.authority-unknown'
+        | 'security.event'
+        | 'security.finding'
     readonly category: 'identity' | 'peer' | 'transport' | 'elevation' | 'authority' | 'event' | 'finding'
     readonly peer: string
     readonly evidence: RpcSecurityEvidence | 'mixed'
@@ -189,7 +197,11 @@ const securityResource: RpcDataResource = {
     presentation: {
         defaultColumns: ['timeframe', 'severity', 'finding', 'event', 'peer', 'target', 'namespace', 'holder', 'transport', 'authentication', 'encryption', 'signing', 'relay', 'evidence', 'message'],
         representation: 'name'
-    }
+    },
+    actions: [
+        { method: 'acquireAuthority', label: 'acquire', confirm: true, kinds: ['security.authority'] },
+        { method: 'releaseAuthority', label: 'release mine', confirm: true, kinds: ['security.authority'] }
+    ]
 }
 
 export const SECURITY_RESOURCE: RpcDataResource = securityResource
@@ -213,6 +225,8 @@ const peersId = JSON.stringify(['security', 'peers'])
 const peerId = (peer: string) => JSON.stringify(['security', 'peer', peer])
 const sectionId = (peer: string, section: 'transports' | 'elevations' | 'authorities') => JSON.stringify(['security', section, peer])
 const rowId = (category: SecurityRow['category'], peer: string, identity: readonly unknown[]) => JSON.stringify(['security-row', category, peer, ...identity])
+/** Stable action subject for one real authority record; unknown placeholder rows deliberately use another identity. */
+export const securityAuthorityRowId = (peer: string, namespace: string): string => rowId('authority', peer, ['component', namespace])
 
 const evidenceOf = (transport: RpcTransportDescription): RpcSecurityEvidence | 'mixed' => {
     if (!transport.security) return 'unknown'
@@ -571,7 +585,7 @@ export class SecurityDataProvider implements RpcDataProvider {
                 rowId('authority', peer, ['unknown']),
                 {
                     name: `Authority posture on ${peer}`,
-                    kind: 'security.authority',
+                    kind: 'security.authority-unknown',
                     category: 'authority',
                     peer,
                     evidence: 'unknown',
@@ -581,7 +595,7 @@ export class SecurityDataProvider implements RpcDataProvider {
         else
             for (const authority of authorities)
                 rows.push([
-                    rowId('authority', peer, [authority.namespace]),
+                    securityAuthorityRowId(peer, authority.namespace),
                     {
                         name: authority.namespace,
                         kind: 'security.authority',
