@@ -164,9 +164,10 @@ The first cross-layer acceptance fixture is implemented in `packages/cli/src/sec
 It covers authenticated Socket.IO roles behind an anonymous browser link, the complete effect
 ladder, a bounded AI grant, an expiring elevation, authority contention and expiry, identity-name
 mismatch, reconnect, signed/unsigned MQTT, normalized console events, and token/signing-secret
-redaction from browser-facing RPC answers and snapshots. Remaining work in this phase is explicit
-offline/stale and transport-change scenarios plus rendered-DOM, traffic-export and JSONL-export
-redaction checks.
+redaction from browser-facing RPC answers and snapshots. It now also replaces a live authenticated
+peer with an open peer under the same name, asserting the offline/stale transition, presence
+history, reconnect, and fresh transport posture. Remaining work in this phase is rendered-DOM,
+traffic-export and JSONL-export redaction checks.
 
 ## Not now
 

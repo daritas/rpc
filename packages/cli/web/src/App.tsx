@@ -601,33 +601,55 @@ export const App = () => {
             setStream((current) => [event, ...current].slice(0, 500))
         }
         peerChange.current = (peer, state, change) => {
+            const forgetPosture = () => {
+                setKnown((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
+                setDescribeRefusals((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
+                setAuthorities((current) => ({ ...current, [peer]: undefined }))
+            }
+            const describeAgain = () => {
+                if (!service) return
+                void service
+                    .describe(peer)
+                    .then((next) => {
+                        if ('error' in next) {
+                            setDescribeRefusals((current) => ({ ...current, [peer]: next.error }))
+                            if (peer === selected) setDescribed(next)
+                            return
+                        }
+                        setKnown((current) => ({ ...current, [peer]: next }))
+                        setDescribeRefusals((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
+                        if (peer === selected) setDescribed(next)
+                    })
+                    .catch((failure) => setDescribeRefusals((current) => ({ ...current, [peer]: (failure as { message?: string }).message ?? String(failure) })))
+            }
             if (state === 'reshaped') {
                 // The peer is still here - its surface changed and the console has dropped what it
                 // cached. Not a coming or a going, so the presence history is left alone; what
                 // matters is that an open panel and the network catalogue stop showing the old
                 // shape without a reselection.
                 void refreshPeers()
-                setKnown((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
-                if (service)
-                    void service
-                        .describe(peer)
-                        .then((next) => {
-                            if ('error' in next) {
-                                setDescribeRefusals((current) => ({ ...current, [peer]: next.error }))
-                                if (peer === selected) setDescribed(next)
-                                return
-                            }
-                            setKnown((current) => ({ ...current, [peer]: next }))
-                            setDescribeRefusals((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
-                            if (peer === selected) setDescribed(next)
-                        })
-                        .catch((failure) => setDescribeRefusals((current) => ({ ...current, [peer]: (failure as { message?: string }).message ?? String(failure) })))
+                forgetPosture()
+                describeAgain()
                 return
             }
             setComings((current) => [change, ...current].slice(0, 200))
+            if (state === 'offline') {
+                // A lease and transport posture are claims about now. Keep the component channel's
+                // last values in its own explicitly stale store, but never leave these live facts
+                // looking current while their peer is gone.
+                setAuthorities((current) => ({ ...current, [peer]: undefined }))
+            }
+            if (state === 'online') {
+                // A peer returning under one name may be a new process with a different transport,
+                // authorizer, contract or authority generation. Only re-describe one the page had
+                // already used; discovery itself remains free of a probe per peer.
+                const wasUsed = peer === selected || peer in known || peer in describeRefusals
+                forgetPosture()
+                if (wasUsed) describeAgain()
+            }
             void refreshPeers()
         }
-    }, [service, refreshPeers, events, peerChange, eventsPaused, selected])
+    }, [service, refreshPeers, events, peerChange, eventsPaused, selected, known, describeRefusals])
 
     useEffect(() => {
         // Pausing stops the buffer filling rather than only the list rendering, so a paused tab on a

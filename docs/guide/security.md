@@ -124,6 +124,12 @@ those method names and their current `{ holder?, expiresAt?, generation }`. It i
 query and intentionally separate from `describe()`: callers denied this query learn no holder, and
 caches cannot turn an expired lease into current posture.
 
+An offline transition clears live authority immediately. Existing component values are retained by
+their own channel as explicitly stale values, not presented as current posture. When the same peer
+name returns, the console invalidates cached descriptions, refusals, and authority before
+re-describing peers it had already used; peers nobody opened remain discovery-only and cost no
+introspection call.
+
 The console normalizes transport rejections plus relayed `Unauthorized`, `Forbidden`, and
 `NotInControl` outcomes into safe reason codes. It retains 200 entries in memory and streams new
 ones. This history is useful for diagnosing a running network, but it is neither complete nor

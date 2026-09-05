@@ -122,7 +122,7 @@ test.serial('the console explains an authenticated plant without acquiring its u
     }
     const aiDecisions: { source: string; path: string; method: string; effect: string; allowed: boolean; grant?: string; reason: string }[] = []
     const aiGrantExpiresAt = Date.now() + 1200
-    const plant = new RpcServer({
+    let plant = new RpcServer({
         name: target,
         transports: [{ port: 7441, host: '127.0.0.1' }],
         authenticate,
@@ -148,6 +148,8 @@ test.serial('the console explains an authenticated plant without acquiring its u
     const browser = await browserClient(running.url)
     t.teardown(() => browser.client.close())
     await waitFor(async () => (await browser.remote.peers()).peers.includes(target))
+    const initialDescription = (await browser.remote.describe(target)) as ServerDescription
+    t.true(initialDescription.transports?.some((transport) => transport.protocol === 'socket.io' && transport.security?.authentication.value === 'connection'))
 
     const clients: RpcClient[] = []
     const connect = async (identity: RpcIdentity, token: string) => {
@@ -255,6 +257,26 @@ test.serial('the console explains an authenticated plant without acquiring its u
         snapshot: controlled[rpcComponent].getSnapshot()
     })
     for (const [role, secret] of Object.entries(tokens)) t.false(browserFacing.includes(secret), `browser-facing data included the ${role} token`)
+
+    // A disappearance weakens values already observed instead of erasing them, while presence
+    // records the transition. Returning under the same address is not assumed to be the same
+    // security posture: this replacement deliberately changes from authenticated to open.
+    await plant.close()
+    await waitFor(() => controlled[rpcComponent].getSnapshot().status === 'stale')
+    await waitFor(async () => !(await browser.remote.peers()).peers.includes(target))
+    t.true((await browser.remote.presence()).changes.some((change) => change.peer === target && change.state === 'offline'))
+    await Promise.allSettled(clients.map((client) => client.close()))
+    clients.length = 0
+
+    plant = new RpcServer({ name: target, transports: [{ port: 7441, host: '127.0.0.1' }], exposeIntrospection: true })
+    plant.exposeClassInstance(new SecurityCell())
+    await plant.ready()
+    await waitFor(async () => (await browser.remote.peers()).peers.includes(target))
+    const replacementDescription = (await browser.remote.describe(target)) as ServerDescription
+    t.true(replacementDescription.transports?.some((transport) => transport.protocol === 'socket.io' && transport.security?.authentication.value === 'none'))
+    const transitions = (await browser.remote.presence()).changes.filter((change) => change.peer === target)
+    t.true(transitions.some((change) => change.state === 'offline'))
+    t.true(transitions.some((change) => change.state === 'online'))
 })
 
 test.serial('signed MQTT reaches the console and an unsigned caller becomes a bounded security event', async (t) => {

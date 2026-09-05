@@ -313,6 +313,14 @@ leases change without changing a contract. A peer built before `msgrpc.authoriti
 refuses it, therefore shows authority as unknown rather than retaining an old holder. See
 [Command authority](../guide/authority.md#visible-to-everyone) for the target-side rules.
 
+Going offline immediately clears that peer's live authority claim. Component values already
+observed follow the component channel's different rule: they remain readable and are marked stale,
+because “last saw 80 °C before the link failed” is useful while “80 °C now” is false. If the peer
+returns under the same name, cached posture and refusals are discarded and a peer the page had
+already used is described again. This catches a restarted process whose authentication, transport,
+contract, or authority generation changed without turning initial discovery into one probe per
+peer.
+
 The console also keeps the newest 200 security diagnostics. Today these are transport rejections
 and authorization or authority refusals made through the console relay. Rows contain bounded reason
 codes and addresses—not raw policy errors, credentials, keys, or token claims—and are available
