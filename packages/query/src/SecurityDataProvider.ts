@@ -77,6 +77,10 @@ export interface SecurityRow {
     readonly grant?: string
     readonly allowed?: boolean
     readonly previousHolder?: string
+    /** Current derived posture or an observed transition retained in the bounded history. */
+    readonly timeframe?: 'current' | 'history'
+    readonly previous?: string
+    readonly current?: string
 }
 
 export interface SecurityDataProviderOptions {
@@ -114,6 +118,9 @@ export interface SecurityDataEvent {
     readonly expiresAt?: number
     readonly generation?: number
     readonly until?: number
+    readonly transport?: string
+    readonly previous?: string
+    readonly current?: string
 }
 
 export interface SecurityObserver {
@@ -172,12 +179,15 @@ const securityResource: RpcDataResource = {
             effect: { type: { kind: 'string' }, optional: true },
             grant: { type: { kind: 'string' }, optional: true },
             allowed: { type: { kind: 'boolean' }, optional: true },
-            previousHolder: { type: { kind: 'string' }, optional: true }
+            previousHolder: { type: { kind: 'string' }, optional: true },
+            timeframe: { type: { kind: 'string' }, optional: true },
+            previous: { type: { kind: 'string' }, optional: true },
+            current: { type: { kind: 'string' }, optional: true }
         },
         additional: true
     },
     presentation: {
-        defaultColumns: ['severity', 'finding', 'event', 'peer', 'target', 'namespace', 'holder', 'transport', 'authentication', 'encryption', 'signing', 'relay', 'evidence', 'message'],
+        defaultColumns: ['timeframe', 'severity', 'finding', 'event', 'peer', 'target', 'namespace', 'holder', 'transport', 'authentication', 'encryption', 'signing', 'relay', 'evidence', 'message'],
         representation: 'name'
     }
 }
@@ -392,7 +402,8 @@ export class SecurityDataProvider implements RpcDataProvider {
     }
 
     private rows(): readonly (readonly [string, SecurityRow])[] {
-        return [this.identityRow(), ...this.eventRows(), ...this.peers.flatMap((peer) => this.peerRows(peer))]
+        const current = ([id, row]: readonly [string, SecurityRow]) => [id, { ...row, timeframe: 'current' as const }] as const
+        return [current(this.identityRow()), ...this.eventRows(), ...this.peers.flatMap((peer) => this.peerRows(peer)).map(current)]
     }
 
     private eventRows(): readonly (readonly [string, SecurityRow])[] {
@@ -405,6 +416,7 @@ export class SecurityDataProvider implements RpcDataProvider {
                 peer: event.peer ?? event.target ?? '$console-link',
                 evidence: event.evidence,
                 severity: event.severity,
+                timeframe: 'history',
                 event: event.kind,
                 at: event.at,
                 code: event.code,
@@ -419,7 +431,10 @@ export class SecurityDataProvider implements RpcDataProvider {
                 ...(event.previousHolder ? { previousHolder: event.previousHolder } : {}),
                 ...(event.expiresAt !== undefined ? { expiresAt: event.expiresAt } : {}),
                 ...(event.generation !== undefined ? { generation: event.generation } : {}),
-                ...(event.until !== undefined ? { until: event.until } : {})
+                ...(event.until !== undefined ? { until: event.until } : {}),
+                ...(event.transport ? { transport: event.transport } : {}),
+                ...(event.previous ? { previous: event.previous } : {}),
+                ...(event.current ? { current: event.current } : {})
             }
         ])
     }

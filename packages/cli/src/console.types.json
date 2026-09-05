@@ -321,6 +321,24 @@
           },
           "optional": true
         },
+        "transport": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "previous": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "current": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
         "code": {
           "type": {
             "kind": "string"
@@ -362,6 +380,10 @@
         {
           "kind": "literal",
           "value": "elevation-change"
+        },
+        {
+          "kind": "literal",
+          "value": "transport-change"
         }
       ]
     },

@@ -128,7 +128,10 @@ An offline transition clears live authority immediately. Existing component valu
 their own channel as explicitly stale values, not presented as current posture. When the same peer
 name returns, the console invalidates cached descriptions, refusals, and authority before
 re-describing peers it had already used; peers nobody opened remain discovery-only and cost no
-introspection call.
+introspection call. The first description is a transport-posture baseline. Later descriptions are
+compared using only the public, secret-free transport contract and produce bounded
+`transport-change` events for added or removed transports and changes to endpoint, authentication,
+encryption, signing, or relay posture. Disconnect alone stays a Presence event.
 
 The console normalizes transport rejections plus relayed `Unauthorized`, `Forbidden`, and
 `NotInControl` outcomes into safe reason codes. It retains 200 entries in memory and streams new
@@ -141,7 +144,9 @@ verified its policy.
 
 The target keeps no event history. `describe()` and `authorities()` answer what is true now; the
 event bridge explains transitions observed after subscription. The console's bounded history is
-useful for diagnosing a running network, but it is neither complete nor durable audit evidence.
+useful for diagnosing a running network, but it is neither complete nor durable audit evidence. In
+the Security DataProvider, derived posture rows are explicitly marked `current` and retained event
+rows `history`, so an old transition is not confused with the peer's current state.
 
 Run the cross-layer acceptance fixture with:
 

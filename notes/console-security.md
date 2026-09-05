@@ -65,6 +65,11 @@ model. The first three target-side transitions now travel over an opt-in, ordina
 `msgrpc.security` event with closed codes and no policy reason or call arguments. JSONL export is
 useful for debugging but is explicitly not a durable compliance audit log.
 
+Transport trust changes are observed separately by comparing descriptions that the console already
+needed. The first description establishes a baseline; later changes to public endpoint,
+authentication, encryption, signing, relay, or transport membership enter the same bounded history.
+Presence alone never causes an introspection probe or a security alarm.
+
 ### Controls
 
 The open console may acquire and release existing component authority because those are ordinary,
@@ -155,7 +160,9 @@ generation through a query kept separate from structural `describe()` caching. D
 publish AI access decisions, authority changes and elevation changes through the ordinarily
 authorized `msgrpc.security` event. The bridge has no target-side history and carries only closed
 codes and allow-listed identifiers/state, so this remains diagnostic and does not claim
-completeness or durable audit semantics.
+completeness or durable audit semantics. Public transport posture is now compared across later
+descriptions, including same-name peer replacement, and emits bounded `transport-change` history.
+The DataProvider labels derived posture `current` and observed transitions `history`.
 
 ### 5. End-to-end fixture
 
@@ -173,7 +180,8 @@ ladder, a bounded AI grant, an expiring elevation, authority contention and expi
 mismatch, reconnect, signed/unsigned MQTT, normalized console events, and token/signing-secret
 redaction from browser-facing RPC answers and snapshots. It now also replaces a live authenticated
 peer with an open peer under the same name, asserting the offline/stale transition, presence
-history, reconnect, and fresh transport posture. Web boundary tests now carry hostile
+history, reconnect, fresh transport posture, and the recorded authentication downgrade. Web
+boundary tests now carry hostile
 credential-bearing data through the Security DataProvider, generic renderer, traffic view and
 shared JSONL serializer. Metadata traffic strips arguments, results and detailed errors at the bus
 and again at the browser allow-list; the filtered traffic view can be exported. Explicit payload

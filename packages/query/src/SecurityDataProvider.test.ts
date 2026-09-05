@@ -181,6 +181,18 @@ test('security events and live authority leases are ordinary scoped rows', (t) =
                 effect: 'operate',
                 grant: 'ai.tool.write',
                 allowed: true
+            },
+            {
+                id: 9,
+                at: 9200,
+                kind: 'transport-change',
+                severity: 'medium',
+                evidence: 'peer',
+                target: 'alpha',
+                code: 'authentication-changed',
+                transport: 'socket.io listen alpha',
+                previous: 'connection (peer)',
+                current: 'none (peer)'
             }
         ]
     })
@@ -193,6 +205,7 @@ test('security events and live authority leases are ordinary scoped rows', (t) =
         peer: 'alpha',
         evidence: 'link',
         severity: 'medium',
+        timeframe: 'history',
         event: 'authorization-refused',
         at: 9000,
         code: 'Forbidden',
@@ -205,16 +218,37 @@ test('security events and live authority leases are ordinary scoped rows', (t) =
         target: 'alpha',
         evidence: 'peer',
         severity: 'low',
+        timeframe: 'history',
         code: 'allowed',
         effect: 'operate',
         grant: 'ai.tool.write',
         allowed: true
     })
+    t.like(events[2], {
+        name: 'transport-change',
+        target: 'alpha',
+        evidence: 'peer',
+        severity: 'medium',
+        timeframe: 'history',
+        code: 'authentication-changed',
+        transport: 'socket.io listen alpha',
+        previous: 'connection (peer)',
+        current: 'none (peer)'
+    })
 
     const peers = provider.dataRequest('getChildren', ['security'], { parentId: roots.ids[3] }) as RpcGetChildrenResult
     const sections = provider.dataRequest('getChildren', ['security'], { parentId: peers.ids[0] }) as RpcGetChildrenResult
     const authorities = rowsOf(list(provider, sections.ids[2]))
-    t.like(authorities[0], { category: 'authority', namespace: 'line', holder: 'console', expiresAt: 10000, generation: 4, methods: ['start'], evidence: 'peer' })
+    t.like(authorities[0], {
+        category: 'authority',
+        namespace: 'line',
+        holder: 'console',
+        expiresAt: 10000,
+        generation: 4,
+        methods: ['start'],
+        evidence: 'peer',
+        timeframe: 'current'
+    })
 })
 
 test('filtering, sorting, paging and row preview use the DataProvider contract', (t) => {

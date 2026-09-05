@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { extname, join, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { EventEmitter } from 'events'
-import { MqttTransport, RpcServer, SCHEMA_VERSION, TransportEvent, rpc, rpcNamespace, type DescribedComponentAuthority, type RelayedFrame, type RpcInvocationHandle, type RpcSchema, type ServerDescription } from '@source-repo/rpc'
+import { MqttTransport, RpcServer, SCHEMA_VERSION, TransportEvent, rpc, rpcNamespace, type DescribedComponentAuthority, type RelayedFrame, type RpcInvocationHandle, type RpcSchema, type RpcTransportDescription, type ServerDescription } from '@source-repo/rpc'
 import { networkTransports, type NetworkOptions } from './network.js'
 import { BusService, DEFAULT_TAP_TTL, type TapFilter, type TappedFrame } from './bus.js'
 // The tap's own contract, merged with the console's below: one server, and a schema has to describe
@@ -153,6 +153,7 @@ export type SecurityEventKind =
     | 'ai-access'
     | 'authority-change'
     | 'elevation-change'
+    | 'transport-change'
 
 /** Bounded operational evidence, deliberately not a durable audit record. */
 export interface SecurityEvent {
@@ -174,6 +175,9 @@ export interface SecurityEvent {
     expiresAt?: number
     generation?: number
     until?: number
+    transport?: string
+    previous?: string
+    current?: string
     code: string
 }
 
@@ -216,6 +220,39 @@ const operationalCodes = {
 
 const safeEventString = (value: unknown): string | undefined => (typeof value === 'string' && value.length <= 256 ? value : undefined)
 const safeEventNumber = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
+
+type TransportPosture = { label: string; fields: Readonly<Record<string, string>> }
+
+/** Stable, secret-free comparison input made only from RpcTransportDescription's public fields. */
+const transportPostureOf = (transports: readonly RpcTransportDescription[] | undefined): ReadonlyMap<string, TransportPosture> | undefined => {
+    if (transports === undefined) return undefined
+    const duplicates = new Map<string, number>()
+    const rows = [...transports]
+        .sort((a, b) => `${a.name}\0${a.protocol}\0${a.role}\0${a.endpoint ?? ''}`.localeCompare(`${b.name}\0${b.protocol}\0${b.role}\0${b.endpoint ?? ''}`))
+        .map((transport) => {
+            const base = `${transport.name}\0${transport.protocol}\0${transport.role}`
+            const duplicate = duplicates.get(base) ?? 0
+            duplicates.set(base, duplicate + 1)
+            const fact = (name: keyof NonNullable<RpcTransportDescription['security']>) => {
+                const held = transport.security?.[name]
+                return `${held?.value ?? 'unknown'} (${held?.evidence ?? 'unknown'})`
+            }
+            return [
+                `${base}\0${duplicate}`,
+                {
+                    label: `${transport.protocol} ${transport.role} ${transport.name}`,
+                    fields: {
+                        endpoint: transport.endpoint ?? 'unknown',
+                        authentication: fact('authentication'),
+                        encryption: fact('encryption'),
+                        signing: fact('signing'),
+                        relay: fact('relay')
+                    }
+                }
+            ] as const
+        })
+    return new Map(rows)
+}
 
 /**
  * What a description says the peer is. A broker exposes the tap and nothing else; a console has its
@@ -290,6 +327,8 @@ export class ConsoleService extends EventEmitter {
     private readonly securitySeen: SecurityEvent[] = []
     /** One safe msgrpc.security subscription per described peer. */
     private readonly securityForwarding = new Map<string, (...args: unknown[]) => void>()
+    /** Last described public transport posture, retained across an offline/online replacement. */
+    private readonly transportPosture = new Map<string, ReadonlyMap<string, TransportPosture> | undefined>()
     private securityCounter = 0
 
     /**
@@ -401,6 +440,68 @@ export class ConsoleService extends EventEmitter {
         this.securityForwarding.delete(peer)
     }
 
+    /**
+     * Compare descriptions only after they were requested for another reason. Presence alone still
+     * costs no introspection call, and the first observation establishes a baseline rather than
+     * pretending something changed before this console existed.
+     */
+    private noteTransportPosture(peer: string, transports: readonly RpcTransportDescription[] | undefined) {
+        const current = transportPostureOf(transports)
+        if (!this.transportPosture.has(peer)) {
+            this.transportPosture.set(peer, current)
+            return
+        }
+        const previous = this.transportPosture.get(peer)
+        this.transportPosture.set(peer, current)
+        if (previous === undefined || current === undefined) {
+            if (previous !== current)
+                this.noteSecurity({
+                    at: Date.now(),
+                    kind: 'transport-change',
+                    severity: 'medium',
+                    evidence: 'peer',
+                    target: peer,
+                    code: 'reporting-changed',
+                    previous: previous === undefined ? 'unavailable' : 'reported',
+                    current: current === undefined ? 'unavailable' : 'reported'
+                })
+            return
+        }
+        for (const key of new Set([...previous.keys(), ...current.keys()])) {
+            const before = previous.get(key)
+            const after = current.get(key)
+            const transport = safeEventString(after?.label ?? before?.label)
+            if (!before || !after) {
+                this.noteSecurity({
+                    at: Date.now(),
+                    kind: 'transport-change',
+                    severity: 'medium',
+                    evidence: 'peer',
+                    target: peer,
+                    ...(transport ? { transport } : {}),
+                    code: before ? 'transport-removed' : 'transport-added'
+                })
+                continue
+            }
+            for (const field of ['endpoint', 'authentication', 'encryption', 'signing', 'relay'] as const) {
+                if (before.fields[field] === after.fields[field]) continue
+                const was = safeEventString(before.fields[field])
+                const now = safeEventString(after.fields[field])
+                this.noteSecurity({
+                    at: Date.now(),
+                    kind: 'transport-change',
+                    severity: 'medium',
+                    evidence: 'peer',
+                    target: peer,
+                    ...(transport ? { transport } : {}),
+                    ...(was ? { previous: was } : {}),
+                    ...(now ? { current: now } : {}),
+                    code: `${field}-changed`
+                })
+            }
+        }
+    }
+
     /** Console-side token -> the taps it opened, here and on other peers, and when they lapse. */
     private readonly held = new Map<string, { expires: number; owner: string; opened: { peer: string; token: string }[] }>()
     /** Peers whose `frame` event this console has already subscribed to, so it subscribes once. */
@@ -492,6 +593,7 @@ export class ConsoleService extends EventEmitter {
                 on(event: string, handler: (...args: unknown[]) => void): Promise<unknown>
             }>('msgrpc', peer)
             const description = await proxy.describe()
+            this.noteTransportPosture(peer, description.transports)
             // Every description teaches what the peer is, whoever asked for it and why.
             this.roles.set(peer, roleFrom(description))
             if (description.host)

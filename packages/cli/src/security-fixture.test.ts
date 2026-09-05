@@ -247,6 +247,7 @@ test.serial('the console explains an authenticated plant without acquiring its u
     t.is(await (await reconnectedViewer.proxy<SecurityCell>('cell')).status(), 'idle', 'the same authenticated identity may reconnect cleanly')
 
     const security = await browser.remote.securityEvents()
+    t.false(security.events.some((event) => event.kind === 'transport-change'), 'the first described posture establishes a baseline without inventing a change')
     t.true(security.events.some((event) => event.kind === 'authority-refused' && event.code === 'NotInControl'))
     t.true(security.events.some((event) => event.kind === 'authorization-refused' && event.code === 'Forbidden'))
     t.true(
@@ -291,6 +292,18 @@ test.serial('the console explains an authenticated plant without acquiring its u
     await waitFor(async () => (await browser.remote.peers()).peers.includes(target))
     const replacementDescription = (await browser.remote.describe(target)) as ServerDescription
     t.true(replacementDescription.transports?.some((transport) => transport.protocol === 'socket.io' && transport.security?.authentication.value === 'none'))
+    const changedSecurity = await browser.remote.securityEvents()
+    t.true(
+        changedSecurity.events.some(
+            (event) =>
+                event.kind === 'transport-change' &&
+                event.code === 'authentication-changed' &&
+                event.target === target &&
+                event.previous === 'connection (peer)' &&
+                event.current === 'none (peer)'
+        ),
+        'a replacement under the same peer name records its weaker authentication posture'
+    )
     const transitions = (await browser.remote.presence()).changes.filter((change) => change.peer === target)
     t.true(transitions.some((change) => change.state === 'offline'))
     t.true(transitions.some((change) => change.state === 'online'))

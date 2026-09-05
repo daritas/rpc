@@ -319,7 +319,9 @@ because “last saw 80 °C before the link failed” is useful while “80 °C n
 returns under the same name, cached posture and refusals are discarded and a peer the page had
 already used is described again. This catches a restarted process whose authentication, transport,
 contract, or authority generation changed without turning initial discovery into one probe per
-peer.
+peer. The first description establishes a baseline. A later description that changes a transport's
+endpoint, authentication, encryption, signing, or relay posture—or adds or removes a transport—adds
+a `transport-change` event. An ordinary disconnect remains Presence history, not a security alarm.
 
 The console also keeps the newest 200 security diagnostics. These include transport rejections,
 authorization or authority refusals made through the console relay, and target-reported AI access,
@@ -331,8 +333,10 @@ Rows contain bounded reason codes and addresses—not raw policy errors, grant r
 keys, token claims or method arguments—and distinguish link evidence from a peer's report. They are
 available both live as `console.security` and as the `console.securityEvents()` history. Targets
 keep no history for this bridge, so current posture comes from `describe()` and `authorities()`;
-events describe what the console observed after subscribing. This is an operational debugging
-buffer, not a complete or tamper-evident audit log.
+events describe what the console observed after subscribing or between descriptions. Security rows
+label that distinction directly: derived identity, posture, findings, elevations and authorities
+are `current`, while retained transition rows are `history`. History is not presented as current
+posture. This is an operational debugging buffer, not a complete or tamper-evident audit log.
 
 The executable acceptance fixture covers an anonymous browser link, authenticated viewer/operator/
 engineer/AI identities, name impersonation, the effect ladder, an expiring AI grant and elevation,
