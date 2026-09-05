@@ -184,12 +184,18 @@ test('opening one rung opens exactly that rung, and the decision is auditable', 
         name: peer('bus3871'),
         transports: [{ port: 3871, host: '127.0.0.1' }],
         authenticate: createDerivedAuthenticator({ issuers: { [peer('node')]: SECRET } }),
+        exposeIntrospection: true,
         aiGrants: grants({ 'ai.tool.write': { to: [peer('assistant3871')], reason: 'commissioning, 2 August' } }),
         onAiDecision: (record) => decisions.push(record)
     })
     server.exposeClassInstance(new Cell())
     await server.ready()
 
+    const observer = await aiClient(3871, peer('observer3871'), ['viewer'])
+    const operational: { kind: string; code: string; peer: string; method: string; reason?: string }[] = []
+    await (await observer.proxy<{ on(event: string, handler: (record: unknown) => void): Promise<unknown> }>('msgrpc')).on('security', (record) =>
+        operational.push(record as (typeof operational)[number])
+    )
     const ai = await aiClient(3871, peer('assistant3871'), ['ai-tool'])
     const cell = await ai.proxy<Cell>('cell')
 
@@ -204,11 +210,25 @@ test('opening one rung opens exactly that rung, and the decision is auditable', 
     t.false(refused?.allowed)
     t.is(refused?.grant, 'ai.tool.program')
     t.regex(String(refused?.reason), /not open on this node/)
+    const operationalDeadline = Date.now() + 2000
+    while (operational.length < 2) {
+        if (Date.now() > operationalDeadline) throw new Error(`security events did not arrive: ${JSON.stringify(operational)}`)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    t.deepEqual(
+        operational.map(({ kind, code, peer: source, method }) => ({ kind, code, source, method })),
+        [
+            { kind: 'ai-access', code: 'allowed', source: peer('assistant3871'), method: 'setSetpoint' },
+            { kind: 'ai-access', code: 'refused', source: peer('assistant3871'), method: 'deployProgram' }
+        ]
+    )
+    t.false(JSON.stringify(operational).includes('commissioning'), 'the grant document reason is not part of the operational event')
 
     // Observation is not gated, so it is not in the audit as a grant decision.
     await cell.status()
     t.false(decisions.some((record) => record.method === 'status'))
 
+    await observer.close()
     await ai.close()
     await server.close()
 })

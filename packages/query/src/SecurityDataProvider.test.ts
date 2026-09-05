@@ -166,26 +166,50 @@ test('security events and live authority leases are ordinary scoped rows', (t) =
                 namespace: 'line',
                 method: 'start',
                 code: 'Forbidden'
+            },
+            {
+                id: 8,
+                at: 9100,
+                kind: 'ai-access',
+                severity: 'low',
+                evidence: 'peer',
+                peer: 'assistant',
+                target: 'alpha',
+                namespace: 'line',
+                method: 'start',
+                code: 'allowed',
+                effect: 'operate',
+                grant: 'ai.tool.write',
+                allowed: true
             }
         ]
     })
     const roots = provider.dataRequest('getChildren', ['security'], {}) as RpcGetChildrenResult
     const events = rowsOf(list(provider, roots.ids[2]))
-    t.deepEqual(events, [
-        {
-            name: 'authorization-refused',
-            kind: 'security.event',
-            category: 'event',
-            peer: 'alpha',
-            evidence: 'link',
-            severity: 'medium',
-            event: 'authorization-refused',
-            at: 9000,
-            code: 'Forbidden',
-            namespace: 'line',
-            method: 'start'
-        }
-    ])
+    t.like(events[0], {
+        name: 'authorization-refused',
+        kind: 'security.event',
+        category: 'event',
+        peer: 'alpha',
+        evidence: 'link',
+        severity: 'medium',
+        event: 'authorization-refused',
+        at: 9000,
+        code: 'Forbidden',
+        namespace: 'line',
+        method: 'start'
+    })
+    t.like(events[1], {
+        name: 'ai-access',
+        peer: 'assistant',
+        target: 'alpha',
+        evidence: 'peer',
+        severity: 'low',
+        code: 'allowed',
+        effect: 'operate',
+        grant: 'ai.tool.write',
+        allowed: true
+    })
 
     const peers = provider.dataRequest('getChildren', ['security'], { parentId: roots.ids[3] }) as RpcGetChildrenResult
     const sections = provider.dataRequest('getChildren', ['security'], { parentId: peers.ids[0] }) as RpcGetChildrenResult

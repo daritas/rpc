@@ -61,7 +61,9 @@ A later `explainAccess`/authorization dry-run is acceptable only when it:
 Show the console page's authenticated identity, roles and trust source without secrets. Normalize
 authentication failures, authorization refusals, AI grant decisions, signature failures, authority
 changes, elevation changes and transport trust changes into the existing bounded diagnostic event
-model. JSONL export is useful for debugging but is explicitly not a durable compliance audit log.
+model. The first three target-side transitions now travel over an opt-in, ordinarily authorized
+`msgrpc.security` event with closed codes and no policy reason or call arguments. JSONL export is
+useful for debugging but is explicitly not a durable compliance audit log.
 
 ### Controls
 
@@ -149,9 +151,11 @@ actually authorized. No dry-run contract has been justified yet.
 The first operational slice is now implemented. Transport rejections and relayed-call
 authorization/authority refusals are kept as a 200-entry, secret-free console history and projected
 through the Security DataProvider. Authorized peers expose live authority holder, expiry and
-generation through a query kept separate from structural `describe()` caching. Authority changes,
-AI decisions and elevation changes still need explicit event hooks; this history is diagnostic and
-does not claim completeness or durable audit semantics.
+generation through a query kept separate from structural `describe()` caching. Described peers now
+publish AI access decisions, authority changes and elevation changes through the ordinarily
+authorized `msgrpc.security` event. The bridge has no target-side history and carries only closed
+codes and allow-listed identifiers/state, so this remains diagnostic and does not claim
+completeness or durable audit semantics.
 
 ### 5. End-to-end fixture
 

@@ -220,14 +220,27 @@
               {
                 "kind": "literal",
                 "value": "medium"
+              },
+              {
+                "kind": "literal",
+                "value": "low"
               }
             ]
           }
         },
         "evidence": {
           "type": {
-            "kind": "literal",
-            "value": "link"
+            "kind": "union",
+            "options": [
+              {
+                "kind": "literal",
+                "value": "link"
+              },
+              {
+                "kind": "literal",
+                "value": "peer"
+              }
+            ]
           }
         },
         "peer": {
@@ -251,6 +264,60 @@
         "method": {
           "type": {
             "kind": "string"
+          },
+          "optional": true
+        },
+        "effect": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "grant": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "allowed": {
+          "type": {
+            "kind": "boolean"
+          },
+          "optional": true
+        },
+        "capability": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "holder": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "previousHolder": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "expiresAt": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "generation": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "until": {
+          "type": {
+            "kind": "number"
           },
           "optional": true
         },
@@ -283,6 +350,18 @@
         {
           "kind": "literal",
           "value": "authority-refused"
+        },
+        {
+          "kind": "literal",
+          "value": "ai-access"
+        },
+        {
+          "kind": "literal",
+          "value": "authority-change"
+        },
+        {
+          "kind": "literal",
+          "value": "elevation-change"
         }
       ]
     },

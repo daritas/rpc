@@ -128,11 +128,12 @@ test.serial('the console explains an authenticated plant without acquiring its u
         authenticate,
         authorize,
         exposeIntrospection: true,
-        aiGrants: { grants: 1, revision: 1, open: { 'ai.tool.write': { to: [identities.ai.name], expiresAt: aiGrantExpiresAt, reason: 'security fixture' } } },
+        // The target-side audit callback may see the private policy reason. The safe event bridge
+        // below must not, so use a real fixture credential rather than an innocuous sentence.
+        aiGrants: { grants: 1, revision: 1, open: { 'ai.tool.write': { to: [identities.ai.name], expiresAt: aiGrantExpiresAt, reason: tokens.ai } } },
         onAiDecision: (decision) => aiDecisions.push(decision)
     })
     plant.exposeClassInstance(new SecurityCell())
-    plant.elevate({ capability: 'debug.endpoint', reason: 'security fixture', until: Date.now() + 600, grantedBy: identities.engineer.name })
     await plant.ready()
     t.teardown(() => plant.close())
 
@@ -150,6 +151,9 @@ test.serial('the console explains an authenticated plant without acquiring its u
     await waitFor(async () => (await browser.remote.peers()).peers.includes(target))
     const initialDescription = (await browser.remote.describe(target)) as ServerDescription
     t.true(initialDescription.transports?.some((transport) => transport.protocol === 'socket.io' && transport.security?.authentication.value === 'connection'))
+    // Opened after describe(), because that call also installs the console's safe operational-event
+    // subscription. Both opening and expiry are therefore observable without timing startup.
+    plant.elevate({ capability: 'debug.endpoint', reason: 'security fixture', until: Date.now() + 1500, grantedBy: identities.engineer.name })
 
     const clients: RpcClient[] = []
     const connect = async (identity: RpcIdentity, token: string) => {
@@ -245,6 +249,19 @@ test.serial('the console explains an authenticated plant without acquiring its u
     const security = await browser.remote.securityEvents()
     t.true(security.events.some((event) => event.kind === 'authority-refused' && event.code === 'NotInControl'))
     t.true(security.events.some((event) => event.kind === 'authorization-refused' && event.code === 'Forbidden'))
+    t.true(
+        security.events.some(
+            (event) => event.kind === 'ai-access' && event.code === 'allowed' && event.peer === identities.ai.name && event.target === target && event.method === 'acknowledgeAlarm'
+        ),
+        'an allowed target-side AI decision reaches the console as a safe peer-reported event'
+    )
+    t.true(security.events.some((event) => event.kind === 'ai-access' && event.code === 'refused' && event.method === 'deployProgram'))
+    t.true(security.events.some((event) => event.kind === 'authority-change' && event.code === 'acquired' && event.namespace === 'cell'))
+    t.true(security.events.some((event) => event.kind === 'authority-change' && event.code === 'expired' && event.namespace === 'cell'))
+    t.true(
+        security.events.some((event) => event.kind === 'elevation-change' && event.code === 'opened' && event.capability === 'debug.endpoint' && event.severity === 'medium')
+    )
+    t.true(security.events.some((event) => event.kind === 'elevation-change' && event.code === 'expired' && event.target === target))
     t.true(aiDecisions.some((decision) => decision.allowed && decision.method === 'acknowledgeAlarm' && decision.grant === 'ai.tool.write'))
     t.true(aiDecisions.some((decision) => !decision.allowed && decision.method === 'acknowledgeAlarm' && decision.grant === 'ai.tool.write'))
 

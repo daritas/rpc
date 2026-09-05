@@ -72,6 +72,11 @@ export interface SecurityRow {
     readonly at?: number
     readonly code?: string
     readonly method?: string
+    readonly target?: string
+    readonly effect?: string
+    readonly grant?: string
+    readonly allowed?: boolean
+    readonly previousHolder?: string
 }
 
 export interface SecurityDataProviderOptions {
@@ -93,13 +98,22 @@ export interface SecurityDataEvent {
     readonly id: number
     readonly at: number
     readonly kind: string
-    readonly severity: 'high' | 'medium'
-    readonly evidence: 'link'
+    readonly severity: 'high' | 'medium' | 'low'
+    readonly evidence: 'link' | 'peer'
     readonly peer?: string
     readonly target?: string
     readonly namespace?: string
     readonly method?: string
     readonly code: string
+    readonly effect?: string
+    readonly grant?: string
+    readonly allowed?: boolean
+    readonly capability?: string
+    readonly holder?: string
+    readonly previousHolder?: string
+    readonly expiresAt?: number
+    readonly generation?: number
+    readonly until?: number
 }
 
 export interface SecurityObserver {
@@ -153,12 +167,17 @@ const securityResource: RpcDataResource = {
             event: { type: { kind: 'string' }, optional: true },
             at: { type: { kind: 'number' }, optional: true },
             code: { type: { kind: 'string' }, optional: true },
-            method: { type: { kind: 'string' }, optional: true }
+            method: { type: { kind: 'string' }, optional: true },
+            target: { type: { kind: 'string' }, optional: true },
+            effect: { type: { kind: 'string' }, optional: true },
+            grant: { type: { kind: 'string' }, optional: true },
+            allowed: { type: { kind: 'boolean' }, optional: true },
+            previousHolder: { type: { kind: 'string' }, optional: true }
         },
         additional: true
     },
     presentation: {
-        defaultColumns: ['severity', 'finding', 'event', 'peer', 'namespace', 'holder', 'transport', 'authentication', 'encryption', 'signing', 'relay', 'evidence', 'message'],
+        defaultColumns: ['severity', 'finding', 'event', 'peer', 'target', 'namespace', 'holder', 'transport', 'authentication', 'encryption', 'signing', 'relay', 'evidence', 'message'],
         representation: 'name'
     }
 }
@@ -389,8 +408,18 @@ export class SecurityDataProvider implements RpcDataProvider {
                 event: event.kind,
                 at: event.at,
                 code: event.code,
+                ...(event.target ? { target: event.target } : {}),
                 ...(event.namespace ? { namespace: event.namespace } : {}),
-                ...(event.method ? { method: event.method } : {})
+                ...(event.method ? { method: event.method } : {}),
+                ...(event.effect ? { effect: event.effect } : {}),
+                ...(event.grant ? { grant: event.grant } : {}),
+                ...(event.allowed !== undefined ? { allowed: event.allowed } : {}),
+                ...(event.capability ? { capability: event.capability } : {}),
+                ...(event.holder ? { holder: event.holder } : {}),
+                ...(event.previousHolder ? { previousHolder: event.previousHolder } : {}),
+                ...(event.expiresAt !== undefined ? { expiresAt: event.expiresAt } : {}),
+                ...(event.generation !== undefined ? { generation: event.generation } : {}),
+                ...(event.until !== undefined ? { until: event.until } : {})
             }
         ])
     }

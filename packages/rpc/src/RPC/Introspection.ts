@@ -196,6 +196,43 @@ export interface DescribedComponentAuthority {
 }
 
 /**
+ * A target-side security decision safe to forward to an operational console.
+ *
+ * Codes are closed and raw policy reasons are deliberately absent. Names identify the affected
+ * RPC surface or peer; credentials, claims, parameters and grant-document reasons never enter this
+ * shape. It is live diagnostic evidence, not a durable audit record.
+ */
+export type RpcOperationalSecurityEvent =
+  | {
+      at: number;
+      kind: "ai-access";
+      code: "allowed" | "refused";
+      peer: string;
+      namespace: string;
+      method: string;
+      effect: RpcEffect;
+      grant?: string;
+      allowed: boolean;
+    }
+  | {
+      at: number;
+      kind: "authority-change";
+      code: "acquired" | "renewed" | "taken" | "released" | "expired";
+      namespace: string;
+      holder?: string;
+      previousHolder?: string;
+      expiresAt?: number;
+      generation: number;
+    }
+  | {
+      at: number;
+      kind: "elevation-change";
+      code: "opened" | "lowered" | "expired";
+      capability: string;
+      until?: number;
+    };
+
+/**
  * The schema format has one type map shared by every namespace, so a library adding types to a
  * user's schema has to stay out of their names - a plant defining its own `TypeNode` would
  * otherwise find describe() described against it. Everything here moves under a prefix that no
@@ -306,8 +343,21 @@ export const withIntrospection = (schema: RpcSchema | undefined): RpcSchema => {
  * reconnaissance, and on a plant network instance names tend to encode plant structure.
  */
 @rpcNamespace("msgrpc")
-export class Introspection {
-  constructor(private handler: RpcServerHandler) {}
+export class Introspection extends EventEmitter {
+  declare rpcEvents: {
+    /** Bounded target-side decisions; never raw policy errors, claims, credentials or parameters. */
+    security: [event: RpcOperationalSecurityEvent];
+  };
+
+  constructor(
+    private handler: RpcServerHandler,
+    securityEvents?: EventEmitter,
+  ) {
+    super();
+    securityEvents?.on("security", (event: RpcOperationalSecurityEvent) =>
+      this.emit("security", event),
+    );
+  }
 
   /**
    * This host's topology records whole - what a console needs to draw the trees without asking

@@ -321,11 +321,18 @@ already used is described again. This catches a restarted process whose authenti
 contract, or authority generation changed without turning initial discovery into one probe per
 peer.
 
-The console also keeps the newest 200 security diagnostics. Today these are transport rejections
-and authorization or authority refusals made through the console relay. Rows contain bounded reason
-codes and addresses—not raw policy errors, credentials, keys, or token claims—and are available
-both live as `console.security` and as the `console.securityEvents()` history. This is an operational
-debugging buffer, not a complete or tamper-evident audit log.
+The console also keeps the newest 200 security diagnostics. These include transport rejections,
+authorization or authority refusals made through the console relay, and target-reported AI access,
+authority-lease and elevation changes. A described target that publishes `msgrpc.security` is
+subscribed once; older targets remain posture-only. The subscription passes through the target's
+ordinary `authorize` rule, so refusing it reveals no event stream.
+
+Rows contain bounded reason codes and addresses—not raw policy errors, grant reasons, credentials,
+keys, token claims or method arguments—and distinguish link evidence from a peer's report. They are
+available both live as `console.security` and as the `console.securityEvents()` history. Targets
+keep no history for this bridge, so current posture comes from `describe()` and `authorities()`;
+events describe what the console observed after subscribing. This is an operational debugging
+buffer, not a complete or tamper-evident audit log.
 
 The executable acceptance fixture covers an anonymous browser link, authenticated viewer/operator/
 engineer/AI identities, name impersonation, the effect ladder, an expiring AI grant and elevation,

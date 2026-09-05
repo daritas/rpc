@@ -132,9 +132,16 @@ introspection call.
 
 The console normalizes transport rejections plus relayed `Unauthorized`, `Forbidden`, and
 `NotInControl` outcomes into safe reason codes. It retains 200 entries in memory and streams new
-ones. This history is useful for diagnosing a running network, but it is neither complete nor
-durable audit evidence; AI-grant and elevation decisions remain in their target-side hooks until an
-explicit safe event bridge is provided.
+ones. A peer exposing introspection also publishes a safe `msgrpc.security` event for AI access
+decisions, authority changes and elevation changes. The console subscribes after the peer describes
+that event and rebuilds every received object from an allow-list. Codes are closed; raw authorizer
+errors, AI-grant reasons, claims, credentials and call parameters are absent. These rows retain
+`peer` evidence because the target reported the decision rather than pretending the console
+verified its policy.
+
+The target keeps no event history. `describe()` and `authorities()` answer what is true now; the
+event bridge explains transitions observed after subscription. The console's bounded history is
+useful for diagnosing a running network, but it is neither complete nor durable audit evidence.
 
 Run the cross-layer acceptance fixture with:
 

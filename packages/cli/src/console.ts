@@ -144,19 +144,36 @@ export interface ConsoleLinkIdentity {
     identity?: { name: string; roles?: string[] }
 }
 
-export type SecurityEventKind = 'authentication-failure' | 'signature-failure' | 'transport-rejection' | 'authorization-refused' | 'authority-refused'
+export type SecurityEventKind =
+    | 'authentication-failure'
+    | 'signature-failure'
+    | 'transport-rejection'
+    | 'authorization-refused'
+    | 'authority-refused'
+    | 'ai-access'
+    | 'authority-change'
+    | 'elevation-change'
 
 /** Bounded operational evidence, deliberately not a durable audit record. */
 export interface SecurityEvent {
     id: number
     at: number
     kind: SecurityEventKind
-    severity: 'high' | 'medium'
-    evidence: 'link'
+    severity: 'high' | 'medium' | 'low'
+    evidence: 'link' | 'peer'
     peer?: string
     target?: string
     namespace?: string
     method?: string
+    effect?: string
+    grant?: string
+    allowed?: boolean
+    capability?: string
+    holder?: string
+    previousHolder?: string
+    expiresAt?: number
+    generation?: number
+    until?: number
     code: string
 }
 
@@ -191,6 +208,15 @@ const securityKindOf = (reason: string | undefined): SecurityEventKind => {
     return 'transport-rejection'
 }
 
+const operationalCodes = {
+    'ai-access': new Set(['allowed', 'refused']),
+    'authority-change': new Set(['acquired', 'renewed', 'taken', 'released', 'expired']),
+    'elevation-change': new Set(['opened', 'lowered', 'expired'])
+} as const
+
+const safeEventString = (value: unknown): string | undefined => (typeof value === 'string' && value.length <= 256 ? value : undefined)
+const safeEventNumber = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
+
 /**
  * What a description says the peer is. A broker exposes the tap and nothing else; a console has its
  * own namespace; a page hosts the chat service the console app ships. Anything else answering for
@@ -211,7 +237,7 @@ export class ConsoleService extends EventEmitter {
     /**
      * Declared rather than inferred from emit() calls, which cannot be read statically. Without
      * this the console's own contract described its methods and none of its events, so a console
-     * pointed at another one saw an empty events list on a service that has three.
+     * pointed at another one saw an empty events list on a service that has several.
      */
     declare rpcEvents: {
         event: [event: StreamedEvent]
@@ -262,6 +288,8 @@ export class ConsoleService extends EventEmitter {
     /** What has gone wrong on the links, newest first and bounded. */
     private readonly seen: NetworkProblem[] = []
     private readonly securitySeen: SecurityEvent[] = []
+    /** One safe msgrpc.security subscription per described peer. */
+    private readonly securityForwarding = new Map<string, (...args: unknown[]) => void>()
     private securityCounter = 0
 
     /**
@@ -310,6 +338,67 @@ export class ConsoleService extends EventEmitter {
         this.securitySeen.unshift(recorded)
         if (this.securitySeen.length > PROBLEM_HISTORY) this.securitySeen.length = PROBLEM_HISTORY
         this.emit('security', recorded)
+    }
+
+    /**
+     * Rebuild a peer-reported event from its closed vocabulary. Never spread a remote object: an
+     * older or hostile peer may attach raw policy errors, claims or credentials to it.
+     */
+    private noteRemoteSecurity(target: string, value: unknown) {
+        if (!value || typeof value !== 'object') return
+        const from = value as Record<string, unknown>
+        const kind = safeEventString(from.kind) as keyof typeof operationalCodes | undefined
+        const code = safeEventString(from.code)
+        if (!kind || !Object.hasOwn(operationalCodes, kind) || !code || !operationalCodes[kind].has(code as never)) return
+        const until = safeEventNumber(from.until)
+        const severity: SecurityEvent['severity'] =
+            kind === 'elevation-change' && code === 'opened' && until === undefined
+                ? 'high'
+                : (kind === 'elevation-change' && code === 'opened') ||
+                    (kind === 'authority-change' && code === 'taken') ||
+                    (kind === 'ai-access' && code === 'refused')
+                  ? 'medium'
+                  : 'low'
+        const strings = Object.fromEntries(
+            ['peer', 'namespace', 'method', 'effect', 'grant', 'capability', 'holder', 'previousHolder'].flatMap((field) => {
+                const held = safeEventString(from[field])
+                return held === undefined ? [] : [[field, held]]
+            })
+        )
+        const numbers = Object.fromEntries(
+            ['expiresAt', 'generation', 'until'].flatMap((field) => {
+                const held = safeEventNumber(from[field])
+                return held === undefined ? [] : [[field, held]]
+            })
+        )
+        this.noteSecurity({
+            at: Date.now(),
+            kind,
+            severity,
+            evidence: 'peer',
+            target,
+            ...strings,
+            ...numbers,
+            ...(typeof from.allowed === 'boolean' ? { allowed: from.allowed } : {}),
+            code
+        })
+    }
+
+    private async followSecurity(peer: string, proxy: { on(event: string, handler: (...args: unknown[]) => void): Promise<unknown> }) {
+        if (this.securityForwarding.has(peer)) return
+        const handler = (event: unknown) => this.noteRemoteSecurity(peer, event)
+        this.securityForwarding.set(peer, handler)
+        try {
+            await proxy.on('security', handler)
+        } catch (failure) {
+            this.securityForwarding.delete(peer)
+            throw failure
+        }
+    }
+
+    /** A departed process took its remote subscription with it; a replacement gets a fresh one. */
+    forgetSecurity(peer: string) {
+        this.securityForwarding.delete(peer)
     }
 
     /** Console-side token -> the taps it opened, here and on other peers, and when they lapse. */
@@ -398,7 +487,10 @@ export class ConsoleService extends EventEmitter {
     @rpc
     async describe(peer: string): Promise<ServerDescription | { error: string; code?: string }> {
         try {
-            const proxy = await this.reach(peer).proxy<{ describe: () => Promise<ServerDescription> }>('msgrpc', peer)
+            const proxy = await this.reach(peer).proxy<{
+                describe: () => Promise<ServerDescription>
+                on(event: string, handler: (...args: unknown[]) => void): Promise<unknown>
+            }>('msgrpc', peer)
             const description = await proxy.describe()
             // Every description teaches what the peer is, whoever asked for it and why.
             this.roles.set(peer, roleFrom(description))
@@ -409,6 +501,8 @@ export class ConsoleService extends EventEmitter {
                     ...(description.host.place ? { place: description.host.place } : {}),
                     ...(description.host.label !== undefined ? { label: description.host.label } : {})
                 })
+            if (description.namespaces.find((namespace) => namespace.name === 'msgrpc')?.events.some((event) => event.name === 'security'))
+                await this.followSecurity(peer, proxy).catch(() => undefined)
             return description
         } catch (e) {
             const failure = asFailure(e)
@@ -649,6 +743,15 @@ export class ConsoleService extends EventEmitter {
             const [peer, namespace, event] = key.split('/')
             await this.unwatch(peer, namespace, event).catch(() => undefined)
         }
+        for (const [peer, handler] of this.securityForwarding) {
+            try {
+                const proxy = await this.reach(peer).proxy<{ off(event: string, handler: (...args: unknown[]) => void): Promise<unknown> }>('msgrpc', peer)
+                await proxy.off('security', handler)
+            } catch {
+                // Gone, which removed its server-side subscription already.
+            }
+        }
+        this.securityForwarding.clear()
     }
 }
 
@@ -866,6 +969,7 @@ export const startConsole = async (options: ConsoleOptions) => {
         transport.on(TransportEvent.peerGone, (peer: string) => {
             // Asked again if it returns: a broker restarted with a tap is a different answer.
             service.forgetBus(peer)
+            service.forgetSecurity(peer)
             // Whatever it was watching goes with it, rather than waiting out a ttl on a broker.
             void service.releaseTapsFor(peer)
             service.links.delete(peer)
