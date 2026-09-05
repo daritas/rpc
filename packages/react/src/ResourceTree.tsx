@@ -744,7 +744,7 @@ export const BranchTable = ({
     const headings = columns.length ? columns : ['id']
 
     return (
-        <div className="branch-table-wrap">
+        <div className={glyphs ? 'branch-table-wrap' : 'branch-table-wrap typed-plain'}>
             {tools}
             {/* Which kinds of thing are in here, where there is more than one.
              *
@@ -760,7 +760,18 @@ export const BranchTable = ({
                         all
                     </button>
                     {seen.map(([name, count]) => (
-                        <button key={name} className={kind === name ? 'toggle on' : 'toggle'} onClick={() => setKind(kind === name ? undefined : name)} title={name}>
+                        // The legend, and no new furniture to be one: these already name the kinds
+                        // on the page, so giving a chip the colour and mark of the rows it stands
+                        // for is what tells a reader which line of a stacked heading is which. A
+                        // chip naming something the resource did not declare stays plain, which is
+                        // honest - there is no channel to show, because no column is marked for it.
+                        <button
+                            key={name}
+                            className={kind === name ? 'toggle on' : 'toggle'}
+                            data-channel={typedLayout?.layout.stacked.find((held) => held.type === name)?.channel}
+                            onClick={() => setKind(kind === name ? undefined : name)}
+                            title={name}
+                        >
                             {name.split('.').pop()}
                             {/* Only while nothing is picked. The tally is of the page that arrived,
                                 and once a kind is asked for the peer answers with all of them - so
@@ -778,7 +789,7 @@ export const BranchTable = ({
                 to reach the bottom of the page to press - which is the position they were using it
                 to leave. */}
             <div className="branch-table-scroll">
-                <table className={glyphs ? 'branch-table' : 'branch-table typed-plain'}>
+                <table className="branch-table">
                     <thead>
                         <tr>
                             {typedLayout

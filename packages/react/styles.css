@@ -990,7 +990,7 @@ textarea.control {
     white-space: nowrap;
 }
 
-.branch-table [data-channel] {
+.branch-table-wrap [data-channel] {
     color: var(--type-fallback, #7d8899);
 }
 
@@ -1001,7 +1001,7 @@ textarea.control {
  * An inline-block of exactly 1ch advances by 1ch regardless - a wide glyph spills into the margin
  * beside it rather than into the layout. Take the fixed width off and the alignment this whole
  * arrangement exists to protect goes with it. */
-.branch-table [data-channel]::before {
+.branch-table-wrap [data-channel]::before {
     display: inline-block;
     width: 1ch;
     margin-right: 0.4ch;
@@ -1011,67 +1011,67 @@ textarea.control {
 /* Filled first, hollow after, because the channels are handed out in order and a filled mark reads
    better than an outline at eleven pixels. Four shapes twice over rather than eight unrelated ones:
    fill is then a cue of its own between the first four types and the second four. */
-.branch-table [data-channel='0'] {
+.branch-table-wrap [data-channel='0'] {
     color: var(--type-1, #e5b567);
 }
 
-.branch-table [data-channel='0']::before {
+.branch-table-wrap [data-channel='0']::before {
     content: '\25cf';
 }
 
-.branch-table [data-channel='1'] {
+.branch-table-wrap [data-channel='1'] {
     color: var(--type-2, #9bb8e8);
 }
 
-.branch-table [data-channel='1']::before {
+.branch-table-wrap [data-channel='1']::before {
     content: '\25a0';
 }
 
-.branch-table [data-channel='2'] {
+.branch-table-wrap [data-channel='2'] {
     color: var(--type-3, #e08e6d);
 }
 
-.branch-table [data-channel='2']::before {
+.branch-table-wrap [data-channel='2']::before {
     content: '\25b2';
 }
 
-.branch-table [data-channel='3'] {
+.branch-table-wrap [data-channel='3'] {
     color: var(--type-4, #79c9b8);
 }
 
-.branch-table [data-channel='3']::before {
+.branch-table-wrap [data-channel='3']::before {
     content: '\25c6';
 }
 
-.branch-table [data-channel='4'] {
+.branch-table-wrap [data-channel='4'] {
     color: var(--type-5, #c39ada);
 }
 
-.branch-table [data-channel='4']::before {
+.branch-table-wrap [data-channel='4']::before {
     content: '\25cb';
 }
 
-.branch-table [data-channel='5'] {
+.branch-table-wrap [data-channel='5'] {
     color: var(--type-6, #b8c96b);
 }
 
-.branch-table [data-channel='5']::before {
+.branch-table-wrap [data-channel='5']::before {
     content: '\25a1';
 }
 
-.branch-table [data-channel='6'] {
+.branch-table-wrap [data-channel='6'] {
     color: var(--type-7, #ef92b0);
 }
 
-.branch-table [data-channel='6']::before {
+.branch-table-wrap [data-channel='6']::before {
     content: '\25b3';
 }
 
-.branch-table [data-channel='7'] {
+.branch-table-wrap [data-channel='7'] {
     color: var(--type-8, #93a7b8);
 }
 
-.branch-table [data-channel='7']::before {
+.branch-table-wrap [data-channel='7']::before {
     content: '\25c7';
 }
 
@@ -1083,7 +1083,7 @@ textarea.control {
  * reader an annoyance rather than a capability, and an annoyed reader goes and finds the checkbox.
  * That asymmetry is the whole argument, and it is why this is not a preference with a neutral
  * default. The hue stays either way; it is the ink in every cell that is being turned off. */
-.branch-table.typed-plain [data-channel]::before {
+.branch-table-wrap.typed-plain [data-channel]::before {
     content: none;
 }
 
@@ -1092,6 +1092,14 @@ textarea.control {
  * A background *image* rather than a colour, so it composes with the selection tint underneath
  * instead of fighting it. Faint on purpose: it is answering a question a reader only asks about a
  * blank they were surprised by, and most blanks in a table of several types are this one. */
+/* A picked chip keeps its own colour and says so with its border instead.
+   It is the legend: the chip whose rows are on screen is the one whose colour a reader most needs
+   to see, so letting the selected state repaint it accent-blue would blank the key at the exact
+   moment it is being used. */
+.kind-chips .toggle.on[data-channel] {
+    color: inherit;
+}
+
 .branch-table td.typed-absent {
     background-image: repeating-linear-gradient(
         135deg,

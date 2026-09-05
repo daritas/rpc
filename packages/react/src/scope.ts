@@ -1,5 +1,6 @@
 import { componentDataResources } from '@source-repo/rpc'
 import type { DescribedAction, DescribedComponent, DescribedMethod, DescribedResource, TypeNode } from './types.js'
+import type { TypedFields } from './typed-columns.js'
 
 /** Resource catalogue and schema helpers shared by the generic tree/scope/grid. */
 
@@ -148,6 +149,73 @@ export const columnsFor = (resource: { presentation?: { defaultColumns?: readonl
     if (resource?.presentation?.defaultColumns?.length) return resource.presentation.defaultColumns
     const row = resolveOnce(resource?.row, types, new Set()).type
     return row?.kind === 'object' ? Object.keys(row.fields) : []
+}
+
+/** What a resource says its rows look like, where it says they do not all look alike. */
+export interface TypedRowFields {
+    /** The field whose literal value says which of the shapes a row is. */
+    readonly discriminator: string
+    readonly types: readonly TypedFields[]
+}
+
+/**
+ * The declared shapes of a resource's rows, where it declares more than one.
+ *
+ * A resource whose rows are all alike returns nothing here and is drawn one column per field, which
+ * is what every resource did before this existed. A resource that declares a **discriminated union**
+ * gets one column per slot instead: see `notes/typed-columns.md`.
+ *
+ * Read from the declaration and from nothing else. The alternative - noticing which fields the rows
+ * on this page happen to populate - is a layout that changes when the page does, and a heading that
+ * moves while somebody is reading across it is worse than a heading that is too wide. It is also
+ * the rule `NetworkRpcDataProvider` already states one line above the same temptation: columns come
+ * from declarations, never by guessing at whichever values happened to arrive.
+ *
+ * `TypeNode` needed nothing added to express this. `union` and `literal` have both been there since
+ * the vocabulary was written, so a provider says a row is one of seven shapes the way TypeScript
+ * does, and `generic-viewer.md`'s condition for per-kind presentation metadata - *only if the union
+ * genuinely cannot carry it* - is not met and no such field is being added.
+ */
+export const typedRowFields = (
+    resource: { presentation?: { defaultColumns?: readonly string[] }; row?: TypeNode } | undefined,
+    types?: Types
+): TypedRowFields | undefined => {
+    const row = resolveOnce(resource?.row, types, new Set())
+    if (row.type?.kind !== 'union') return undefined
+    const options = row.type.options
+        .map((option) => resolveOnce(option, types, row.seen).type)
+        .filter((option) => option?.kind === 'object')
+    // One shape is not a union worth drawing as one, and nor is a union of things that are not rows.
+    if (options.length < 2) return undefined
+
+    const marked = (option: (typeof options)[number], name: string): string | undefined => {
+        const held = option.fields[name]?.type
+        return held?.kind === 'literal' && typeof held.value === 'string' ? held.value : undefined
+    }
+    // A field every option pins to a *distinct* string. Distinct is the half that matters: without
+    // it two shapes would answer to one name, and every row of both would draw whichever came first.
+    const discriminator = Object.keys(options[0].fields).find((name) => {
+        const values = options.map((option) => marked(option, name))
+        return values.every((value) => value !== undefined) && new Set(values).size === options.length
+    })
+    if (!discriminator) return undefined
+
+    const promoted = resource?.presentation?.defaultColumns
+    return {
+        discriminator,
+        types: options.map((option) => {
+            // The discriminator is the axis rather than a field on it, and drawing it would give
+            // every row a column repeating what its own colour and mark already say.
+            const own = Object.keys(option.fields).filter((name) => name !== discriminator)
+            return {
+                type: marked(option, discriminator)!,
+                // `defaultColumns` still decides which fields are drawn and in what order, exactly
+                // as it does for a resource of one shape - it is the resource's advice about which
+                // four of forty matter, and having several shapes does not make it less its advice.
+                fields: promoted?.length ? promoted.filter((name) => own.includes(name)) : own
+            }
+        })
+    }
 }
 
 /**
