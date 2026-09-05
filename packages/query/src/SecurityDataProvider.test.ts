@@ -78,6 +78,33 @@ test('remote security evidence is allow-listed and process history is bounded', 
     )
 })
 
+test('event coverage distinguishes a quiet subscription from an unavailable one', (t) => {
+    const provider = new SecurityDataProvider({
+        peers: ['alpha', 'legacy'],
+        descriptions: { alpha: described(), legacy: described({ name: 'legacy' }) },
+        eventSources: { alpha: 'unavailable', legacy: 'unsupported' }
+    })
+    const roots = provider.dataRequest('getChildren', ['security'], {}) as RpcGetChildrenResult
+    t.deepEqual(roots.data[2], {
+        name: 'Events',
+        events: 0,
+        coverage: 'partial',
+        following: 0,
+        unavailable: 1,
+        unsupported: 1,
+        unknown: 0
+    })
+    t.like(
+        rowsOf(list(provider)).find((row) => row.finding === 'security-events-unavailable'),
+        {
+            peer: 'alpha',
+            evidence: 'unknown',
+            severity: 'unknown',
+            message: 'This observer could describe msgrpc.security but could not subscribe to it'
+        }
+    )
+})
+
 test('authority action subjects decode only the provider-owned opaque identity', (t) => {
     const id = securityAuthorityRowId('alpha', 'line')
     t.deepEqual(securityAuthorityTargetOf(id), { peer: 'alpha', namespace: 'line' })

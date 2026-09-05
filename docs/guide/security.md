@@ -185,10 +185,12 @@ door the client connects to, never by a prompt or tool argument. `ai.tool.write`
 
 The generic MCP DataProvider adapter, current Security resource hydration, and bounded operational
 event collection are implemented. Its declared authority actions call the target directly under
-the selected persona. Each described peer declaring `msgrpc.security` gets one authorized
-subscription; only the closed event vocabulary crosses the boundary, the newest 200 events are
-kept in process memory, and a returned peer is subscribed afresh. The result is intentionally
-persona-local diagnostic history rather than a complete or durable audit trail.
+the selected persona. Beginning with the first Security-provider read, each described peer
+declaring `msgrpc.security` gets one authorized subscription; only the closed event vocabulary
+crosses the boundary, the newest 200 events are kept in process memory, and a returned peer is
+subscribed afresh. Coverage counts and an explicit unavailable-source finding distinguish a quiet
+network from a refused observation. The result is intentionally persona-local diagnostic history
+rather than a complete or durable audit trail.
 
 ### The management surface
 

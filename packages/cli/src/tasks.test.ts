@@ -336,8 +336,10 @@ test.serial('two MCP tasks keep separate authenticated AI personas', async (t) =
     const plcName = peer('plc-assistant')
     const securityName = peer('security-assistant')
     const hubName = peer('persona-hub')
+    const eventPeerName = peer('event-peer')
     const plcBusToken = `plc-bus-${run}`
     const securityBusToken = `security-bus-${run}`
+    const eventPeerToken = `event-peer-bus-${run}`
     const plcDoorToken = `plc-door-${run}`
     const securityDoorToken = `security-door-${run}`
     writeFileSync(join(directory, 'plc.mcp-token'), plcDoorToken, { mode: 0o600 })
@@ -357,17 +359,19 @@ test.serial('two MCP tasks keep separate authenticated AI personas', async (t) =
     )
 
     const seen: string[] = []
+    let allowHubSecurityEvents = false
     const hub = new RpcServer({
         name: hubName,
         transports: [{ port: hubPort, host: '127.0.0.1' }],
         authenticate: createTokenAuthenticator({
             [plcBusToken]: { name: plcName, roles: ['ai-tool', 'plc-development'] },
-            [securityBusToken]: { name: securityName, roles: ['ai-tool', 'security-administration'] }
+            [securityBusToken]: { name: securityName, roles: ['ai-tool', 'security-administration'] },
+            [eventPeerToken]: { name: eventPeerName }
         }),
         aiGrants: { grants: 1, revision: 1, open: { 'ai.tool.write': { to: [plcName], expiresAt: Date.now() + 60_000 } } },
         exposeIntrospection: true,
         authorize: ({ identity, method, subscription }) => {
-            if (subscription) return true
+            if (subscription) return allowHubSecurityEvents
             if (method === 'describe') seen.push(identity?.name ?? 'anonymous')
             if (method === 'describe' || method === 'authorities') return true
             if (method === '$acquire' || method === '$release') return identity?.roles?.includes('plc-development') ?? false
@@ -376,6 +380,16 @@ test.serial('two MCP tasks keep separate authenticated AI personas', async (t) =
     })
     hub.exposeClassInstance(new PersonaCell())
     await hub.ready()
+    const startEventPeer = async () => {
+        const server = new RpcServer({
+            name: eventPeerName,
+            transports: [{ connect: `http://127.0.0.1:${hubPort}`, credentials: { token: eventPeerToken } }],
+            exposeIntrospection: true
+        })
+        await server.ready()
+        return server
+    }
+    let eventPeer = await startEventPeer()
     const warnings: string[] = []
     const tasks = await startTaskFile(file, { warning: (warning) => warnings.push(warning) })
 
@@ -410,6 +424,14 @@ test.serial('two MCP tasks keep separate authenticated AI personas', async (t) =
         t.true(warnings.some((warning) => warning.includes(`identity "${plcName}"`) && warning.includes('cannot switch personas')))
         t.true(warnings.some((warning) => warning.includes(`identity "${securityName}"`) && warning.includes('cannot switch personas')))
 
+        const initialPeersDeadline = Date.now() + 5000
+        for (;;) {
+            const listed = await callThrough(plcPort, plcDoorToken, 'list_peers')
+            if ((listed.peers as string[]).includes(eventPeerName)) break
+            if (Date.now() > initialPeersDeadline) throw new Error('the event fixture peer never appeared to the MCP persona')
+            await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+
         const resources = await callThrough(plcPort, plcDoorToken, 'list_data_resources')
         t.is(((resources.providers as { provider: string }[])[0]).provider, 'security')
         const roots = await callThrough(plcPort, plcDoorToken, 'read_data', {
@@ -428,6 +450,12 @@ test.serial('two MCP tasks keep separate authenticated AI personas', async (t) =
         })
         const authorityAt = (securityRows.data as { kind?: string }[]).findIndex((row) => row.kind === 'security.authority')
         t.true(authorityAt >= 0)
+        t.like(
+            (securityRows.data as { finding?: string; peer?: string }[]).find((row) => row.finding === 'security-events-unavailable'),
+            { peer: hubName },
+            'zero events names a refused source instead of looking like a quiet, fully observed network'
+        )
+        allowHubSecurityEvents = true
         const authorityId = (securityRows.ids as string[])[authorityAt]
         const acquired = await callThrough(plcPort, plcDoorToken, 'invoke_data_action', {
             provider: 'security',
@@ -447,16 +475,29 @@ test.serial('two MCP tasks keep separate authenticated AI personas', async (t) =
         })
         t.is(released.status, 'released')
 
-        let eventRows: { kind?: string; event?: string; code?: string; target?: string; namespace?: string; holder?: string; evidence?: string }[] = []
-        const eventDeadline = Date.now() + 5000
-        while (!eventRows.some((row) => row.event === 'authority-change' && row.code === 'acquired') && Date.now() < eventDeadline) {
+        type EventRow = {
+            kind?: string
+            event?: string
+            code?: string
+            target?: string
+            namespace?: string
+            holder?: string
+            evidence?: string
+            capability?: string
+        }
+        const readEventRows = async (): Promise<EventRow[]> => {
             const observed = await callThrough(plcPort, plcDoorToken, 'read_data', {
                 provider: 'security',
                 method: 'getList',
                 resource: ['security'],
                 params: { recursive: true, pagination: { page: 0, pageSize: 500 } }
             })
-            eventRows = (observed.data as typeof eventRows).filter((row) => row.kind === 'security.event')
+            return (observed.data as EventRow[]).filter((row) => row.kind === 'security.event')
+        }
+        let eventRows: EventRow[] = []
+        const eventDeadline = Date.now() + 5000
+        while (!eventRows.some((row) => row.event === 'authority-change' && row.code === 'acquired') && Date.now() < eventDeadline) {
+            eventRows = await readEventRows()
             if (!eventRows.some((row) => row.event === 'authority-change' && row.code === 'acquired')) await new Promise((resolve) => setTimeout(resolve, 25))
         }
         t.like(
@@ -465,6 +506,42 @@ test.serial('two MCP tasks keep separate authenticated AI personas', async (t) =
             'the MCP-local Security provider retains safe target events observed by this persona'
         )
         t.true(eventRows.some((row) => row.event === 'authority-change' && row.code === 'released'))
+
+        eventPeer.elevate({ capability: 'before-replacement', until: Date.now() + 60_000 })
+        const beforeDeadline = Date.now() + 5000
+        while (!eventRows.some((row) => row.capability === 'before-replacement') && Date.now() < beforeDeadline) {
+            eventRows = await readEventRows()
+            if (!eventRows.some((row) => row.capability === 'before-replacement')) await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        t.true(eventRows.some((row) => row.capability === 'before-replacement'), 'the first peer incarnation was followed')
+
+        await eventPeer.close()
+        const goneDeadline = Date.now() + 5000
+        while (Date.now() < goneDeadline) {
+            const listed = await callThrough(plcPort, plcDoorToken, 'list_peers')
+            if (!(listed.peers as string[]).includes(eventPeerName)) break
+            await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        eventPeer = await startEventPeer()
+        const returnedDeadline = Date.now() + 5000
+        while (Date.now() < returnedDeadline) {
+            const listed = await callThrough(plcPort, plcDoorToken, 'list_peers')
+            if ((listed.peers as string[]).includes(eventPeerName)) break
+            await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        // The read rehydrates collection for this incarnation before it emits anything.
+        await readEventRows()
+        eventPeer.elevate({ capability: 'after-replacement', until: Date.now() + 60_000 })
+        const replacementDeadline = Date.now() + 5000
+        while (!eventRows.some((row) => row.capability === 'after-replacement') && Date.now() < replacementDeadline) {
+            eventRows = await readEventRows()
+            if (!eventRows.some((row) => row.capability === 'after-replacement')) await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        t.like(
+            eventRows.find((row) => row.capability === 'after-replacement'),
+            { target: eventPeerName, event: 'elevation-change', code: 'opened', evidence: 'peer' },
+            'a process returning under the same peer name gets a fresh security-event subscription'
+        )
 
         const ungranted = await fetch(`http://127.0.0.1:${securityPort}`, {
             method: 'POST',
@@ -497,6 +574,7 @@ test.serial('two MCP tasks keep separate authenticated AI personas', async (t) =
         t.is(wrongDoor.status, 401, 'one persona\'s MCP token must not open the other persona\'s door')
     } finally {
         await tasks.close()
+        await eventPeer.close()
         await hub.close()
         rmSync(directory, { recursive: true, force: true })
     }

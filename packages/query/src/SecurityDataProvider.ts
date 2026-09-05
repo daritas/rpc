@@ -29,6 +29,7 @@ export type SecurityFindingKind =
     | 'tls-verification-disabled'
     | 'unsigned-mqtt'
     | 'permanent-elevation'
+    | 'security-events-unavailable'
 
 export type SecuritySeverity = 'high' | 'medium' | 'low' | 'unknown'
 
@@ -104,9 +105,13 @@ export interface SecurityDataProviderOptions {
     /** Missing entries are unknown/refused; an empty array is a known answer with no guarded components. */
     readonly authorities?: Readonly<Record<string, readonly DescribedComponentAuthority[] | undefined>>
     readonly events?: readonly SecurityDataEvent[]
+    /** Optional collection coverage. Absent keeps providers that do not collect events unchanged. */
+    readonly eventSources?: Readonly<Record<string, SecurityEventSourceStatus>>
     readonly epoch?: string
     readonly revision?: number
 }
+
+export type SecurityEventSourceStatus = 'following' | 'unavailable' | 'unsupported' | 'unknown'
 
 export type SecurityDataEventKind =
     | 'authentication-failure'
@@ -373,6 +378,7 @@ export class SecurityDataProvider implements RpcDataProvider {
     private readonly observer?: SecurityObserver
     private readonly authorities: NonNullable<SecurityDataProviderOptions['authorities']>
     private readonly events: readonly SecurityDataEvent[]
+    private readonly eventSources?: Readonly<Record<string, SecurityEventSourceStatus>>
     private readonly epoch: string
     private readonly revision: number
 
@@ -384,6 +390,7 @@ export class SecurityDataProvider implements RpcDataProvider {
         this.observer = options.observer
         this.authorities = options.authorities ?? {}
         this.events = options.events ?? []
+        this.eventSources = options.eventSources
         this.epoch = options.epoch ?? 'security-view'
         this.revision = options.revision ?? 0
     }
@@ -409,6 +416,11 @@ export class SecurityDataProvider implements RpcDataProvider {
 
     private branches(): readonly SecurityBranch[] {
         const findings = this.rows().filter(([, row]) => row.category === 'finding').length
+        const eventStatuses = this.eventSources ? this.peers.map((peer) => this.eventSources?.[peer] ?? 'unknown') : undefined
+        const following = eventStatuses?.filter((status) => status === 'following').length ?? 0
+        const unavailable = eventStatuses?.filter((status) => status === 'unavailable').length ?? 0
+        const unsupported = eventStatuses?.filter((status) => status === 'unsupported').length ?? 0
+        const unknown = eventStatuses?.filter((status) => status === 'unknown').length ?? 0
         const roots: SecurityBranch[] = [
             {
                 id: identityId,
@@ -422,7 +434,25 @@ export class SecurityDataProvider implements RpcDataProvider {
                 }
             },
             { id: findingsId, kind: 'findings', label: 'Findings', hasChildren: false, value: { name: 'Findings', findings } },
-            { id: eventsId, kind: 'events', label: 'Events', hasChildren: false, value: { name: 'Events', events: this.events.length } },
+            {
+                id: eventsId,
+                kind: 'events',
+                label: 'Events',
+                hasChildren: false,
+                value: {
+                    name: 'Events',
+                    events: this.events.length,
+                    ...(eventStatuses
+                        ? {
+                              coverage: unavailable || unknown ? 'partial' : 'complete',
+                              following,
+                              unavailable,
+                              unsupported,
+                              unknown
+                          }
+                        : {})
+                }
+            },
             { id: peersId, kind: 'peers', label: 'Peers', hasChildren: this.peers.length > 0, value: { name: 'Peers', peers: this.peers.length } }
         ]
         const children = this.peers.flatMap((peer): SecurityBranch[] => {
@@ -638,6 +668,21 @@ export class SecurityDataProvider implements RpcDataProvider {
                     severity: 'medium',
                     finding: 'validation-disabled',
                     message: 'RPC arguments are not checked against the extracted contract'
+                }
+            ])
+
+        if (this.eventSources?.[peer] === 'unavailable')
+            rows.push([
+                rowId('finding', peer, ['security-events-unavailable']),
+                {
+                    name: `Security events unavailable on ${peer}`,
+                    kind: 'security.finding',
+                    category: 'finding',
+                    peer,
+                    evidence: 'unknown',
+                    severity: 'unknown',
+                    finding: 'security-events-unavailable',
+                    message: 'This observer could describe msgrpc.security but could not subscribe to it'
                 }
             ])
 

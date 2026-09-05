@@ -32,6 +32,7 @@ import {
     securityAuthorityTargetOf,
     securityEventFromRemote,
     type SecurityDescription,
+    type SecurityEventSourceStatus,
     type SecurityRow
 } from '@source-repo/query'
 import { connectNetwork, type NetworkOptions } from './network.js'
@@ -996,6 +997,7 @@ export const startMcp = async (options: McpOptions) => {
     let securityRevision = 0
     const securityEvents = new SecurityEventHistory(200)
     const securityFollowing = new Map<string, { remote: Subscribable; handler: (...args: unknown[]) => void; ready: Promise<void> }>()
+    const securityEventSources = new Map<string, SecurityEventSourceStatus>()
 
     /** Keep one authorized subscription per live peer; concurrent DataProvider reads share it. */
     const followSecurity = async (peer: string) => {
@@ -1028,7 +1030,11 @@ export const startMcp = async (options: McpOptions) => {
 
     // A replacement under the same name needs a fresh remote listener; its predecessor took the
     // old subscription with it. Retaining only the local marker would silently stop collection.
-    for (const transport of network.transports) transport.on(TransportEvent.peerGone, (peer: string) => void unfollowSecurity(peer))
+    for (const transport of network.transports)
+        transport.on(TransportEvent.peerGone, (peer: string) => {
+            securityEventSources.delete(peer)
+            void unfollowSecurity(peer)
+        })
 
     /**
      * The Security DataProvider projected from what this MCP identity can establish right now.
@@ -1052,11 +1058,21 @@ export const startMcp = async (options: McpOptions) => {
                 // The projection records only that this observer was refused. Raw errors may carry
                 // policy details or credentials and therefore never enter DataProvider output.
                 refused[peer] = true
+                securityEventSources.set(peer, 'unknown')
                 return
             }
             const msgrpc = description.namespaces.find((namespace) => namespace.name === 'msgrpc')
-            if (msgrpc?.events.some((event) => event.name === 'security')) await followSecurity(peer).catch(() => undefined)
-            else await unfollowSecurity(peer)
+            if (msgrpc?.events.some((event) => event.name === 'security')) {
+                try {
+                    await followSecurity(peer)
+                    securityEventSources.set(peer, 'following')
+                } catch {
+                    securityEventSources.set(peer, 'unavailable')
+                }
+            } else {
+                await unfollowSecurity(peer)
+                securityEventSources.set(peer, 'unsupported')
+            }
             if (!msgrpc?.methods.some((method) => method.name === 'authorities')) return
             try {
                 const remote = await network.proxy<{ authorities(): Promise<DescribedComponentAuthority[]> }>('msgrpc', peer)
@@ -1072,6 +1088,7 @@ export const startMcp = async (options: McpOptions) => {
             refused,
             authorities,
             events: securityEvents.snapshot(),
+            eventSources: Object.fromEntries(peers.map((peer) => [peer, securityEventSources.get(peer) ?? 'unknown'])),
             observerLabel: `MCP persona ${options.name}`,
             observer: {
                 // This process knows the name it sends. It cannot prove what a remote hub or broker

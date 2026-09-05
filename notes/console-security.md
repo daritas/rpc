@@ -224,7 +224,10 @@ invocation are implemented. The current Security projection is hydrated from the
 authorized descriptions and authority queries with bounded fan-out and unknown/refused peers
 preserved. `observe` needs ordinary authorization; authority acquisition calls the target directly
 and needs `ai.tool.write`. Bounded `msgrpc.security` collection now uses one authorized subscription
-per described peer, rebuilds the closed event vocabulary without spreading remote values, retains
-the newest 200 events for the MCP process lifetime, and projects them through the same Events
-branch. Future policy or grant administration remains `security-admin`/`ai.sponsor` and must
+per described peer after the first Security read, rebuilds the closed event vocabulary without
+spreading remote values, retains the newest 200 events, and projects them through the same Events
+branch. Coverage counts and an explicit unavailable-source finding prevent zero events from
+claiming complete silence after a refused subscription; the same-name replacement fixture proves
+the returned process is followed afresh. Future policy or grant administration remains
+`security-admin`/`ai.sponsor` and must
 additionally prevent self-expansion.

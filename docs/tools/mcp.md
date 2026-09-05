@@ -47,12 +47,15 @@ authorization; the MCP wrapper grants nothing.
 
 The Security provider is local to the MCP process and is not published onto Source RPC. Publishing
 an aggregate would make another caller's reads leave under the MCP process's identity, changing
-the security meaning of the request. Once an authorized description declares `msgrpc.security`,
-the MCP process keeps one ordinary event subscription to that peer. It rebuilds events from the
+the security meaning of the request. The first Security-provider read describes the current peers;
+when an authorized description declares `msgrpc.security`, the MCP process keeps one ordinary event
+subscription to that peer from then on. It rebuilds events from the
 closed, secret-free vocabulary, retains the newest 200 in process memory, and exposes them under
 the same Security resource's Events branch. A departure drops the subscription marker so a process
-returning under the same peer name is subscribed afresh. This is diagnostic history for this MCP
-persona's lifetime, not a durable or complete audit log.
+returning under the same peer name is subscribed afresh. The branch reports followed, unavailable,
+unsupported, and unknown source counts; an unavailable subscription is also an explicit finding,
+so zero events cannot falsely mean complete quiet. This is diagnostic history since the first
+Security read in this MCP process, not a durable or complete audit log.
 
 ### Reading what a device holds
 
