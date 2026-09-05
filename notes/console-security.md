@@ -37,8 +37,11 @@ The workspace shows:
 - findings such as unauthenticated relay, unsigned broker traffic, insecure TLS, permanent
   elevation and unknown posture.
 
-No credential, token, private/public key material, reusable authorization header or secret-bearing
-endpoint reaches `describe()`, console RPC answers, browser state, exports, errors or snapshots.
+No transport credential, token, private/public key material, reusable authorization header or
+secret-bearing endpoint reaches `describe()`, console RPC answers, browser security state, posture
+exports, metadata-only traffic, errors or snapshots. Application events and explicitly enabled
+traffic payloads are different: they are operator-requested application data and are displayed and
+exported verbatim.
 
 ### Access explanation
 
@@ -166,8 +169,11 @@ ladder, a bounded AI grant, an expiring elevation, authority contention and expi
 mismatch, reconnect, signed/unsigned MQTT, normalized console events, and token/signing-secret
 redaction from browser-facing RPC answers and snapshots. It now also replaces a live authenticated
 peer with an open peer under the same name, asserting the offline/stale transition, presence
-history, reconnect, and fresh transport posture. Remaining work in this phase is rendered-DOM,
-traffic-export and JSONL-export redaction checks.
+history, reconnect, and fresh transport posture. Web boundary tests now carry hostile
+credential-bearing data through the Security DataProvider, generic renderer, traffic view and
+shared JSONL serializer. Metadata traffic strips arguments, results and detailed errors at the bus
+and again at the browser allow-list; the filtered traffic view can be exported. Explicit payload
+capture remains deliberately verbatim and outside the redaction claim.
 
 ## Not now
 

@@ -16,6 +16,7 @@ import { throttled } from '@source-repo/search'
 import { MethodPanel } from './MethodPanel'
 import { Operations } from './Operations'
 import { Traffic, TRAFFIC_KEPT } from './Traffic'
+import { downloadJsonLines } from './jsonl'
 import { Problems } from './Problems'
 import { Presence } from './Presence'
 import { displayNameForId, namespaceDisplayName, peerDisplayName } from './displayName'
@@ -288,20 +289,6 @@ const useConsole = () => {
     }, [])
 
     return { service, status, me, linkIdentity, securityEvents, events, peerChange, said, frames, problems, peer, data, operations, relay }
-}
-
-/**
- * Saves what is on screen as jsonl, which is the shape `msgrpc record` writes and `jq` reads. Built
- * here rather than fetched, so it works on a plant network with no route to anywhere.
- */
-const download = (rows: unknown[], filename: string) => {
-    const blob = new Blob([rows.map((row) => JSON.stringify(row)).join('\n') + '\n'], { type: 'application/x-ndjson' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    link.click()
-    URL.revokeObjectURL(url)
 }
 
 /** Just the DataProvider verb, so the page needs no generic over anybody's component class. */
@@ -978,7 +965,7 @@ export const App = () => {
                             <h1>Events</h1>
                             <div className="traffic-actions">
                                 {stream.length > 0 && (
-                                    <button className="toggle" onClick={() => download(stream, 'events.jsonl')} title="save what is here as jsonl">
+                                    <button className="toggle" onClick={() => downloadJsonLines(stream, 'events.jsonl')} title="save what is here as jsonl">
                                         export
                                     </button>
                                 )}

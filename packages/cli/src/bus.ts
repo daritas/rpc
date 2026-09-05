@@ -29,7 +29,7 @@ export interface TapFilter {
     /** Only these kinds: POST, SUCCESS, ERROR, EVENT. */
     kinds?: string[]
     /**
-     * Include arguments, results and event payloads.
+     * Include arguments, results, event payloads and detailed error messages.
      *
      * Off by default, and deliberately: the metadata is what a debugging session usually needs, and
      * a plant bus carries values that nobody meant to hand to whoever happened to be tapping.
@@ -59,6 +59,7 @@ export interface TappedFrame {
     ms?: number
     /** The error code on a refused call. */
     code?: string
+    /** Only when a matching tap asked for payloads. The bounded error code remains metadata. */
     error?: string
     /** Only when a matching tap asked for payloads. */
     params?: unknown[]
@@ -196,10 +197,12 @@ export class BusService extends EventEmitter {
 
         const matched = [...this.active.values()].filter((record) => this.matches(record.filter, frame))
         if (!matched.length) return
-        // Payloads are carried only if at least one of the taps that matched asked for them.
+        // Detailed errors are payload too: applications often put parameters, paths or upstream
+        // responses in an Error message. The bounded RPC code remains useful metadata.
         if (!matched.some((record) => record.filter.payloads)) {
             delete frame.params
             delete frame.result
+            delete frame.error
         }
         frame.taps = matched.map((record) => record.token)
         for (const record of matched) record.frames++

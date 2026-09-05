@@ -232,7 +232,7 @@ The chat contract is the one that has to survive a bundler. `@rpc` and `@rpcName
 
 ### Watching events
 
-**Watch all** takes every event in a namespace in one click, which is the usual first move on an unfamiliar peer. The events pane has a filter, a pause and an **export** that saves what is on screen as jsonl — the same shape `source-rpc record` writes and `jq` reads. Pausing stops the buffer filling rather than only the list rendering, so a paused pane on a busy network stays as it was.
+**Watch all** takes every event in a namespace in one click, which is the usual first move on an unfamiliar peer. The events pane has a filter, a pause and an **export** that saves what is on screen as jsonl — the same shape `source-rpc record` writes and `jq` reads. Event arguments are application data and are exported verbatim, so an event stream should be handled as sensitively as the application it observes. Pausing stops the buffer filling rather than only the list rendering, so a paused pane on a busy network stays as it was.
 
 Arguments worth keeping get a **save** button. Presets are stored in the browser and keyed by namespace and method rather than by peer, so a set saved against one cell is offered on the next — the reason to save a setpoint sequence usually being that five more cabinets are coming. They are named by what they hold, so there is nothing to type.
 
@@ -417,10 +417,16 @@ Frames arrive as the `frame` event, so anything that can subscribe to an msgrpc 
 | `peer` | only frames this peer sent or received — "mirror that device" |
 | `namespace` | only this namespace; applies to replies too, since a reply is paired with its call first |
 | `kinds` | any of `POST`, `SUCCESS`, `ERROR`, `EVENT` |
-| `payloads` | include arguments, results and event payloads. **Off by default** |
+| `payloads` | include arguments, results, event payloads and detailed error messages. **Off by default** |
 | `ttl` | seconds before the tap drops itself. Default 300, maximum 3600 |
 
-Payloads are off by default because the metadata is what a debugging session usually needs, and a plant bus carries values nobody meant to hand to whoever happened to be tapping. Several taps can run at once with different filters; each frame names the taps it matched, and payloads are carried only if one of them asked.
+Payloads are off by default because the metadata is what a debugging session usually needs, and a plant bus carries values nobody meant to hand to whoever happened to be tapping. Detailed error text is payload too: an application can put parameters, paths or an upstream response in an error. A metadata tap keeps the bounded RPC error code and removes that text. Several taps can run at once with different filters; each frame names the taps it matched, and payloads are carried only if one of them asked.
+
+The web Traffic workspace follows the same default and can export its filtered rows as jsonl. Its
+browser boundary rebuilds each row from the declared traffic fields, so a metadata-only capture
+cannot acquire extra transport fields on its way to the DOM or export. Enabling **arguments and
+results** is an explicit disclosure choice: captured application payloads and detailed errors are
+then displayed and exported verbatim.
 
 Taps expire on their own, because a console that closes without untapping would otherwise leave the broker building and emitting frames for a subscriber that is not there.
 

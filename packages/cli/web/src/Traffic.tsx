@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ConsoleService, TappedFrame } from '@source-repo/react'
+import { downloadJsonLines } from './jsonl'
 
 /**
  * What the network is carrying between other peers - the traffic this console is not part of, which
@@ -29,6 +30,29 @@ const payloadOf = (frame: TappedFrame) => {
     return undefined
 }
 
+/**
+ * The browser-facing traffic shape, rebuilt from an allow-list rather than spread from a transport
+ * frame. The bus already applies this boundary; repeating it here keeps a custom or older source
+ * from putting payload data in the DOM or an export unless this tap explicitly requested it.
+ */
+export const trafficRows = (frames: readonly TappedFrame[], includePayloads: boolean): TappedFrame[] =>
+    frames.map((frame) => ({
+        at: frame.at,
+        source: frame.source,
+        target: frame.target,
+        kind: frame.kind,
+        taps: frame.taps,
+        ...(frame.namespace !== undefined ? { namespace: frame.namespace } : {}),
+        ...(frame.method !== undefined ? { method: frame.method } : {}),
+        ...(frame.event !== undefined ? { event: frame.event } : {}),
+        ...(frame.id !== undefined ? { id: frame.id } : {}),
+        ...(frame.ms !== undefined ? { ms: frame.ms } : {}),
+        ...(frame.code !== undefined ? { code: frame.code } : {}),
+        ...(includePayloads && frame.error !== undefined ? { error: frame.error } : {}),
+        ...(includePayloads && frame.params !== undefined ? { params: frame.params } : {}),
+        ...(includePayloads && frame.result !== undefined ? { result: frame.result } : {})
+    }))
+
 export const Traffic = ({
     service,
     selected,
@@ -56,7 +80,7 @@ export const Traffic = ({
     const [sources, setSources] = useState<string[]>([])
     const [busy, setBusy] = useState(false)
     const [problem, setProblem] = useState<string | null>(null)
-    const [payloads, setPayloads] = useState(true)
+    const [payloads, setPayloads] = useState(false)
     const [onlySelected, setOnlySelected] = useState(false)
     const [kinds, setKinds] = useState<string[]>([])
     const [text, setText] = useState('')
@@ -116,7 +140,7 @@ export const Traffic = ({
     const toggleKind = (kind: string) => setKinds((current) => (current.includes(kind) ? current.filter((entry) => entry !== kind) : [...current, kind]))
 
     const search = text.trim().toLowerCase()
-    const shown = frames
+    const shown = trafficRows(frames, payloads)
         .filter((frame) => !search || `${frame.source} ${frame.target} ${subjectOf(frame)} ${payloadOf(frame) ?? ''}`.toLowerCase().includes(search))
         .slice(0, KEPT)
 
@@ -125,6 +149,15 @@ export const Traffic = ({
             <header>
                 <h1>Traffic</h1>
                 <div className="traffic-actions">
+                    {shown.length > 0 && (
+                        <button
+                            className="toggle"
+                            onClick={() => downloadJsonLines(shown, 'traffic.jsonl')}
+                            title="save the filtered traffic as jsonl; includes payloads when this tap requested them"
+                        >
+                            export
+                        </button>
+                    )}
                     {frames.length > 0 && (
                         <button className="toggle" onClick={onClear}>
                             clear
@@ -161,7 +194,7 @@ export const Traffic = ({
                     </div>
                     <p className="muted">
                         Watches what other peers say to each other. It costs something at the other end, so it is off until asked and stops when this tab
-                        does.
+                        does. Arguments, results and detailed errors can contain sensitive application data, so they are off by default.
                     </p>
                 </div>
             )}

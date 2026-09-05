@@ -145,7 +145,10 @@ npm run test:security --workspace @source-repo/rpc-cli
 It verifies authenticated Socket.IO roles, the anonymous browser-to-console versus authenticated
 console-to-target boundary, expiring AI grants and elevations, authority contention and expiry,
 identity-name mismatch, reconnect, signed and unsigned MQTT, and absence of token/signing secrets
-from console-facing answers.
+from console-facing answers. The web tests additionally pass credential-bearing hostile input
+through the Security DataProvider, generic value renderer, traffic row boundary and JSONL
+serializer. Metadata traffic excludes arguments, results and detailed errors; payload capture is a
+deliberate opt-in and those application values are not claimed to be redacted.
 
 ### The management surface
 
