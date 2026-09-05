@@ -261,6 +261,8 @@ Completed on `feature/network-scope-data-provider`:
 - provider-owned tree branches and recursive leaf scoping;
 - declared-field promotion for heterogeneous rows, with scalar fallback and existing preview;
 - visible per-source refusals and bounded-result status;
+- stable resource catalogue identity when repeated reads discover the same columns, so filtering
+  cannot restart its own Network grid read;
 - structural `peer`, `namespace`, `resource` and `interface` filters combined with provider row filters;
 - provider-side row sorting plus deterministic sorting of the bounded aggregate;
 - the network DataProvider as the always-mounted primary console workspace;

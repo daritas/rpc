@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { RpcServer, TransportEvent, type DescribedComponentAuthority, type RpcGetListParams, type RpcGetManyParams, type RpcGetOneParams, type RpcGetOneResult, type RpcGetListResult, type RpcGetManyResult, type RpcSchema } from '@source-repo/rpc'
+import { RpcServer, TransportEvent, type RpcGetListParams, type RpcGetManyParams, type RpcGetOneParams, type RpcGetOneResult, type RpcGetListResult, type RpcGetManyResult, type RpcSchema } from '@source-repo/rpc'
 import { NetworkDataProvider, NetworkRpcDataProvider, NetworkScopeCatalogue, RpcDataCache, SECURITY_RESOURCE, SecurityDataProvider, rpcOnlineFrom, type SecurityRow } from '@source-repo/query'
 import { RpcOperations } from '@source-repo/rpc'
 import { pageName } from './peerName'
@@ -20,6 +20,7 @@ import { downloadJsonLines } from './jsonl'
 import { Problems } from './Problems'
 import { Presence } from './Presence'
 import { displayNameForId, namespaceDisplayName, peerDisplayName } from './displayName'
+import { authorityReadIsCurrent, reconcileAuthorities, type AuthoritiesByPeer } from './authorityState'
 
 /**
  * The reader's watch, kept where the reader is.
@@ -352,7 +353,12 @@ export const App = () => {
      */
     const [describeRefusals, setDescribeRefusals] = useState<{ readonly [peer: string]: string }>({})
     /** Live and intentionally short-lived: authority is arbitration state, not description data. */
-    const [authorities, setAuthorities] = useState<Readonly<Record<string, readonly DescribedComponentAuthority[] | undefined>>>({})
+    const [authorities, setAuthorities] = useState<AuthoritiesByPeer>({})
+    /** Invalidates authority requests that began before an action or peer-incarnation change. */
+    const authorityReadGeneration = useRef<Record<string, number>>({})
+    const supersedeAuthorityReads = (peer: string) => {
+        authorityReadGeneration.current[peer] = (authorityReadGeneration.current[peer] ?? 0) + 1
+    }
     /** A declared Security row action waiting for explicit confirmation in the console's own UI. */
     const [authorityAction, setAuthorityAction] = useState<AuthorityAction | undefined>()
     const [authorityTtl, setAuthorityTtl] = useState<number>(AUTHORITY_LEASES[0])
@@ -491,7 +497,12 @@ export const App = () => {
                 },
                 () => (acquiring ? service.acquireAuthority(id, authorityTtl) : service.releaseAuthority(id))
             )
-            if (result.authorities) setAuthorities((current) => ({ ...current, [result.peer]: result.authorities }))
+            if (result.authorities) {
+                // A poll already in flight observed the state before this call. Its result remains
+                // stale even when a renewal retained the same authority generation.
+                supersedeAuthorityReads(result.peer)
+                setAuthorities((current) => reconcileAuthorities(current, result.peer, result.authorities))
+            }
             const text =
                 result.status === 'acquired'
                     ? `${result.peer}/${result.namespace} is held by ${result.holder ?? relay}${result.expiresAt ? ` until ${new Date(result.expiresAt).toLocaleString()}` : ''}.`
@@ -575,6 +586,7 @@ export const App = () => {
         const refresh = async () => {
             if (running) return
             running = true
+            const started = Object.fromEntries(wanted.map((peer) => [peer, authorityReadGeneration.current[peer] ?? 0]))
             const answers = await throttled(wanted, 6, async (peer) => {
                 try {
                     return [peer, await service.authorities(peer)] as const
@@ -584,7 +596,13 @@ export const App = () => {
             })
             running = false
             if (cancelled) return
-            setAuthorities((current) => ({ ...current, ...Object.fromEntries(answers) }))
+            setAuthorities((current) =>
+                answers.reduce(
+                    (next, [peer, answer]) =>
+                        authorityReadIsCurrent(authorityReadGeneration.current, peer, started[peer]) ? reconcileAuthorities(next, peer, answer) : next,
+                    current
+                )
+            )
         }
         void refresh()
         const timer = window.setInterval(() => void refresh(), 5000)
@@ -652,6 +670,7 @@ export const App = () => {
         }
         peerChange.current = (peer, state, change) => {
             const forgetPosture = () => {
+                supersedeAuthorityReads(peer)
                 setKnown((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
                 setDescribeRefusals((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
                 setAuthorities((current) => ({ ...current, [peer]: undefined }))
@@ -687,6 +706,7 @@ export const App = () => {
                 // A lease and transport posture are claims about now. Keep the component channel's
                 // last values in its own explicitly stale store, but never leave these live facts
                 // looking current while their peer is gone.
+                supersedeAuthorityReads(peer)
                 setAuthorities((current) => ({ ...current, [peer]: undefined }))
             }
             if (state === 'online') {

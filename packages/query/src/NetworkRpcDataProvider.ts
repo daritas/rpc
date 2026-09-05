@@ -86,6 +86,9 @@ const columnsFor = (scope: NetworkScopeRef, sources: NetworkDataRefusal['source'
     return [...new Set([...contextColumns(scope), ...fields, ...(needsValue ? ['value'] : [])])]
 }
 
+const sameColumns = (left: readonly string[], right: readonly string[]): boolean =>
+    left.length === right.length && left.every((column, index) => column === right[index])
+
 export interface NetworkRpcDataProviderOptions {
     readonly provider: NetworkDataProvider
     /** A local cache clock, not a claim about the independent revisions beneath the merge. */
@@ -180,6 +183,7 @@ export class NetworkRpcDataProvider implements RpcDataResources {
         const scope = params.under === undefined ? ({ kind: 'network' } as const) : networkScopeFromKey(params.under)
         if (!scope) throw new Error('network view: under is not a scope locator')
         const answer = await this.provider.getList(scope, { ...params, under: undefined, recursive: undefined })
+        const columns = columnsFor(scope, [...answer.sources])
         this.status = {
             settled: true,
             scope,
@@ -189,7 +193,10 @@ export class NetworkRpcDataProvider implements RpcDataResources {
             hasMore: answer.hasMore,
             partial: answer.partial,
             refused: answer.refused,
-            columns: columnsFor(scope, [...answer.sources])
+            // Column identity is part of the observable catalogue identity. A repeated read with
+            // the same declared fields must not make a React host rebuild the resource and thereby
+            // start the read again.
+            columns: sameColumns(columns, this.status.columns) ? this.status.columns : columns
         }
         for (const listener of this.listeners) listener()
         return {

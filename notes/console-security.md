@@ -170,7 +170,10 @@ completeness or durable audit semantics. Public transport posture is now compare
 descriptions, including same-name peer replacement, and emits bounded `transport-change` history.
 The DataProvider labels derived posture `current` and observed transitions `history`. Known
 authority rows now reuse `$acquire` and `$release` through declared actions with bounded lease
-choices, an explicit confirmation, immediate state refresh, and no takeover surface.
+choices, an explicit confirmation, immediate state refresh, and no takeover surface. Authority
+answers are reconciled by their monotonic generation (and renewal expiry), while reads begun before
+an action or peer-incarnation change are discarded, so the five-second poll cannot flash an older
+holder after a successful action.
 
 ### 5. End-to-end fixture
 

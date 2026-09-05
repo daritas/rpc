@@ -49,7 +49,10 @@ This query lists only components with methods that actually declare `requiresAut
 separate from `describe()` because a lease is live state and a contract is structural cache data.
 The query is authorized like every other `msgrpc` method; refusal discloses no holder. The web
 console polls it only while the Security workspace or a relevant method form is visible, and shows
-unknown rather than a stale lease when it cannot be read.
+unknown rather than a stale lease when it cannot be read. Poll answers are reconciled by monotonic
+generation and renewal expiry, and a read begun before an authority action is discarded when it
+eventually arrives; a successful acquire or renewal therefore cannot be overwritten by its older
+five-second poll.
 
 On a known authority row, the console exposes **acquire** and **release mine** as ordinary declared
 DataProvider actions. Acquisition is bounded to a one-, five-, or fifteen-minute lease and doubles

@@ -99,6 +99,17 @@ test('a branch selection becomes an ordinary recursive list in the existing grid
     })
 })
 
+test('equal aggregate columns retain their identity across reads', async (t) => {
+    const adapter = setup(async () => ({ ids: ['temperature'], data: [{ title: 'Temperature', value: 71 }], total: 1, epoch: 'component', revision: 8 }))
+    const params = { under: '["resource","peer","oven",["tags"]]', recursive: true, pagination: { page: 0, pageSize: 50 } } as const
+
+    await adapter.dataRequest('getList', ['network'], params)
+    const first = adapter.getStatus().columns
+    await adapter.dataRequest('getList', ['network'], params)
+
+    t.is(adapter.getStatus().columns, first)
+})
+
 test('opening a synthetic row delegates to its original provider locator', async (t) => {
     let asked: RpcQuestion | undefined
     const adapter = setup(async (question) => {

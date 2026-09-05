@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import { networkResource, networkScopeFromKey, type NetworkRpcDataProvider, type NetworkScopeRef } from '@source-repo/query'
 import type { DescribedAction } from './types.js'
 import { DataProviderValueGrid } from './DataProviderValueGrid.js'
@@ -31,6 +31,7 @@ export const NetworkValueGrid = ({
     onCallMethod?: (method: NetworkMethodSelection) => void
 }) => {
     const status = useSyncExternalStore(provider.subscribe, provider.getStatus, provider.getStatus)
+    const resource = useMemo(() => networkResource(status.columns), [status.columns])
 
     return (
         <div className="network-value-grid">
@@ -61,7 +62,7 @@ export const NetworkValueGrid = ({
             )}
             <DataProviderValueGrid
                 provider={provider}
-                resource={networkResource(status.columns)}
+                resource={resource}
                 period={period}
                 pageSize={pageSize}
                 onScope={(id) => onScope?.(id === undefined ? { kind: 'network' } : (networkScopeFromKey(id) ?? { kind: 'network' }))}
