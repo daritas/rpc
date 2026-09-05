@@ -5,7 +5,7 @@ import { extname, join, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { EventEmitter } from 'events'
 import { MqttTransport, RpcServer, SCHEMA_VERSION, TransportEvent, rpc, rpcNamespace, type DescribedComponentAuthority, type RelayedFrame, type RpcComponentAuthority, type RpcInvocationHandle, type RpcSchema, type RpcTransportDescription, type ServerDescription } from '@source-repo/rpc'
-import { securityAuthorityTargetOf } from '@source-repo/query'
+import { securityAuthorityTargetOf, securityEventFromRemote } from '@source-repo/query'
 import { networkTransports, type NetworkOptions } from './network.js'
 import { BusService, DEFAULT_TAP_TTL, type TapFilter, type TappedFrame } from './bus.js'
 // The tap's own contract, merged with the console's below: one server, and a schema has to describe
@@ -224,14 +224,7 @@ const securityKindOf = (reason: string | undefined): SecurityEventKind => {
     return 'transport-rejection'
 }
 
-const operationalCodes = {
-    'ai-access': new Set(['allowed', 'refused']),
-    'authority-change': new Set(['acquired', 'renewed', 'taken', 'released', 'expired']),
-    'elevation-change': new Set(['opened', 'lowered', 'expired'])
-} as const
-
 const safeEventString = (value: unknown): string | undefined => (typeof value === 'string' && value.length <= 256 ? value : undefined)
-const safeEventNumber = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
 
 type TransportPosture = { label: string; fields: Readonly<Record<string, string>> }
 
@@ -396,43 +389,8 @@ export class ConsoleService extends EventEmitter {
      * older or hostile peer may attach raw policy errors, claims or credentials to it.
      */
     private noteRemoteSecurity(target: string, value: unknown) {
-        if (!value || typeof value !== 'object') return
-        const from = value as Record<string, unknown>
-        const kind = safeEventString(from.kind) as keyof typeof operationalCodes | undefined
-        const code = safeEventString(from.code)
-        if (!kind || !Object.hasOwn(operationalCodes, kind) || !code || !operationalCodes[kind].has(code as never)) return
-        const until = safeEventNumber(from.until)
-        const severity: SecurityEvent['severity'] =
-            kind === 'elevation-change' && code === 'opened' && until === undefined
-                ? 'high'
-                : (kind === 'elevation-change' && code === 'opened') ||
-                    (kind === 'authority-change' && code === 'taken') ||
-                    (kind === 'ai-access' && code === 'refused')
-                  ? 'medium'
-                  : 'low'
-        const strings = Object.fromEntries(
-            ['peer', 'namespace', 'method', 'effect', 'grant', 'capability', 'holder', 'previousHolder'].flatMap((field) => {
-                const held = safeEventString(from[field])
-                return held === undefined ? [] : [[field, held]]
-            })
-        )
-        const numbers = Object.fromEntries(
-            ['expiresAt', 'generation', 'until'].flatMap((field) => {
-                const held = safeEventNumber(from[field])
-                return held === undefined ? [] : [[field, held]]
-            })
-        )
-        this.noteSecurity({
-            at: Date.now(),
-            kind,
-            severity,
-            evidence: 'peer',
-            target,
-            ...strings,
-            ...numbers,
-            ...(typeof from.allowed === 'boolean' ? { allowed: from.allowed } : {}),
-            code
-        })
+        const rebuilt = securityEventFromRemote(target, value)
+        if (rebuilt) this.noteSecurity(rebuilt)
     }
 
     private async followSecurity(peer: string, proxy: { on(event: string, handler: (...args: unknown[]) => void): Promise<unknown> }) {

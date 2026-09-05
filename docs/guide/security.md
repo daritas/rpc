@@ -183,10 +183,12 @@ door the client connects to, never by a prompt or tool argument. `ai.tool.write`
 `ai.tool.program`, and `ai.sponsor` remain independent target-side grants, with ordinary
 `authorize()` narrowing the exact nodes and methods underneath them.
 
-The generic MCP DataProvider adapter and current Security resource hydration are implemented. Its
-declared authority actions call the target directly under the selected persona. Bounded
-security-event history is the next parity slice; the separate-principal task boundary landed first
-so these reads and actions cannot accidentally inherit a shared administrative identity.
+The generic MCP DataProvider adapter, current Security resource hydration, and bounded operational
+event collection are implemented. Its declared authority actions call the target directly under
+the selected persona. Each described peer declaring `msgrpc.security` gets one authorized
+subscription; only the closed event vocabulary crosses the boundary, the newest 200 events are
+kept in process memory, and a returned peer is subscribed afresh. The result is intentionally
+persona-local diagnostic history rather than a complete or durable audit trail.
 
 ### The management surface
 

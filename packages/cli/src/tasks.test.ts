@@ -366,7 +366,8 @@ test.serial('two MCP tasks keep separate authenticated AI personas', async (t) =
         }),
         aiGrants: { grants: 1, revision: 1, open: { 'ai.tool.write': { to: [plcName], expiresAt: Date.now() + 60_000 } } },
         exposeIntrospection: true,
-        authorize: ({ identity, method }) => {
+        authorize: ({ identity, method, subscription }) => {
+            if (subscription) return true
             if (method === 'describe') seen.push(identity?.name ?? 'anonymous')
             if (method === 'describe' || method === 'authorities') return true
             if (method === '$acquire' || method === '$release') return identity?.roles?.includes('plc-development') ?? false
@@ -445,6 +446,25 @@ test.serial('two MCP tasks keep separate authenticated AI personas', async (t) =
             action: 'releaseAuthority'
         })
         t.is(released.status, 'released')
+
+        let eventRows: { kind?: string; event?: string; code?: string; target?: string; namespace?: string; holder?: string; evidence?: string }[] = []
+        const eventDeadline = Date.now() + 5000
+        while (!eventRows.some((row) => row.event === 'authority-change' && row.code === 'acquired') && Date.now() < eventDeadline) {
+            const observed = await callThrough(plcPort, plcDoorToken, 'read_data', {
+                provider: 'security',
+                method: 'getList',
+                resource: ['security'],
+                params: { recursive: true, pagination: { page: 0, pageSize: 500 } }
+            })
+            eventRows = (observed.data as typeof eventRows).filter((row) => row.kind === 'security.event')
+            if (!eventRows.some((row) => row.event === 'authority-change' && row.code === 'acquired')) await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        t.like(
+            eventRows.find((row) => row.event === 'authority-change' && row.code === 'acquired'),
+            { target: hubName, namespace: 'persona-cell', holder: plcName, evidence: 'peer' },
+            'the MCP-local Security provider retains safe target events observed by this persona'
+        )
+        t.true(eventRows.some((row) => row.event === 'authority-change' && row.code === 'released'))
 
         const ungranted = await fetch(`http://127.0.0.1:${securityPort}`, {
             method: 'POST',

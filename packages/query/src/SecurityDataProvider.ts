@@ -108,10 +108,21 @@ export interface SecurityDataProviderOptions {
     readonly revision?: number
 }
 
+export type SecurityDataEventKind =
+    | 'authentication-failure'
+    | 'signature-failure'
+    | 'transport-rejection'
+    | 'authorization-refused'
+    | 'authority-refused'
+    | 'ai-access'
+    | 'authority-change'
+    | 'elevation-change'
+    | 'transport-change'
+
 export interface SecurityDataEvent {
     readonly id: number
     readonly at: number
-    readonly kind: string
+    readonly kind: SecurityDataEventKind
     readonly severity: 'high' | 'medium' | 'low'
     readonly evidence: 'link' | 'peer'
     readonly peer?: string
@@ -131,6 +142,81 @@ export interface SecurityDataEvent {
     readonly transport?: string
     readonly previous?: string
     readonly current?: string
+}
+
+const remoteOperationalCodes = {
+    'ai-access': new Set(['allowed', 'refused']),
+    'authority-change': new Set(['acquired', 'renewed', 'taken', 'released', 'expired']),
+    'elevation-change': new Set(['opened', 'lowered', 'expired'])
+} as const
+
+const safeRemoteString = (value: unknown): string | undefined => (typeof value === 'string' && value.length <= 256 ? value : undefined)
+const safeRemoteNumber = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
+
+/**
+ * Rebuild peer-reported operational evidence from its closed, secret-free vocabulary.
+ * Never spread the remote value: it may attach private policy reasons, claims or credentials.
+ */
+export const securityEventFromRemote = (target: string, value: unknown, observedAt = Date.now()): Omit<SecurityDataEvent, 'id'> | undefined => {
+    if (!value || typeof value !== 'object') return undefined
+    const from = value as Record<string, unknown>
+    const kind = safeRemoteString(from.kind) as keyof typeof remoteOperationalCodes | undefined
+    const code = safeRemoteString(from.code)
+    if (!kind || !Object.hasOwn(remoteOperationalCodes, kind) || !code || !remoteOperationalCodes[kind].has(code as never)) return undefined
+    const until = safeRemoteNumber(from.until)
+    const severity: SecurityDataEvent['severity'] =
+        kind === 'elevation-change' && code === 'opened' && until === undefined
+            ? 'high'
+            : (kind === 'elevation-change' && code === 'opened') ||
+                (kind === 'authority-change' && code === 'taken') ||
+                (kind === 'ai-access' && code === 'refused')
+              ? 'medium'
+              : 'low'
+    const strings = Object.fromEntries(
+        ['peer', 'namespace', 'method', 'effect', 'grant', 'capability', 'holder', 'previousHolder'].flatMap((field) => {
+            const held = safeRemoteString(from[field])
+            return held === undefined ? [] : [[field, held]]
+        })
+    )
+    const numbers = Object.fromEntries(
+        ['expiresAt', 'generation', 'until'].flatMap((field) => {
+            const held = safeRemoteNumber(from[field])
+            return held === undefined ? [] : [[field, held]]
+        })
+    )
+    return {
+        at: observedAt,
+        kind,
+        severity,
+        evidence: 'peer',
+        target,
+        ...strings,
+        ...numbers,
+        ...(typeof from.allowed === 'boolean' ? { allowed: from.allowed } : {}),
+        code
+    }
+}
+
+/** Process-local, newest-first evidence. This is diagnostic history, never a durable audit log. */
+export class SecurityEventHistory {
+    private readonly limit: number
+    private readonly held: SecurityDataEvent[] = []
+    private counter = 0
+
+    constructor(limit = 200) {
+        this.limit = Math.max(1, Math.floor(limit))
+    }
+
+    record(event: Omit<SecurityDataEvent, 'id'>): SecurityDataEvent {
+        const recorded = { ...event, id: ++this.counter }
+        this.held.unshift(recorded)
+        if (this.held.length > this.limit) this.held.length = this.limit
+        return recorded
+    }
+
+    snapshot(): readonly SecurityDataEvent[] {
+        return [...this.held]
+    }
 }
 
 export interface SecurityObserver {

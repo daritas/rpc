@@ -223,6 +223,8 @@ The MCP-local provider registry, `list_data_resources`, `read_data`, and generic
 invocation are implemented. The current Security projection is hydrated from the MCP observer's
 authorized descriptions and authority queries with bounded fan-out and unknown/refused peers
 preserved. `observe` needs ordinary authorization; authority acquisition calls the target directly
-and needs `ai.tool.write`. Next, add bounded `msgrpc.security` event collection to the same
-provider. Future policy or grant administration remains `security-admin`/`ai.sponsor` and must
+and needs `ai.tool.write`. Bounded `msgrpc.security` collection now uses one authorized subscription
+per described peer, rebuilds the closed event vocabulary without spreading remote values, retains
+the newest 200 events for the MCP process lifetime, and projects them through the same Events
+branch. Future policy or grant administration remains `security-admin`/`ai.sponsor` and must
 additionally prevent self-expansion.

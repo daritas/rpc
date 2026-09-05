@@ -82,6 +82,11 @@ The ladder has three rungs. **No badge, nothing** — a principal with no creden
 
 **Observation covers every read, including the ones the library performs on a component's behalf.** Describing a node, subscribing to its state, paging a collection with `$data` and resolving ambient context are all reads and are all classified as such — a rung that stopped at declared method calls would let a model watch a plant and not ask what it was watching. Acquiring a component's authority is not a read and needs a grant, which is the line in the right place: taking the lease that says nobody else may command is an operation whatever it is followed by.
 
+The MCP Security DataProvider follows that same boundary. It subscribes to a peer's declared
+`msgrpc.security` event only under the MCP persona's observation authority, admits only the closed,
+secret-free event vocabulary, and keeps the newest 200 events in that process. This is live
+diagnostic context for the persona, not a complete or durable audit log.
+
 Four properties are worth knowing before you rely on it:
 
 - **Closed is the default, everywhere.** A node with no grants document refuses every AI write and every AI programming call. There is nothing to turn on to be safe.

@@ -1,6 +1,14 @@
 import test from 'ava'
 import type { RpcGetChildrenResult, RpcGetListResult, ServerDescription } from '@source-repo/rpc'
-import { SECURITY_RESOURCE, SecurityDataProvider, securityAuthorityRowId, securityAuthorityTargetOf, type SecurityRow } from './SecurityDataProvider.js'
+import {
+    SECURITY_RESOURCE,
+    SecurityDataProvider,
+    SecurityEventHistory,
+    securityAuthorityRowId,
+    securityAuthorityTargetOf,
+    securityEventFromRemote,
+    type SecurityRow
+} from './SecurityDataProvider.js'
 
 const described = (changes: Partial<ServerDescription> = {}): ServerDescription => ({
     name: 'alpha',
@@ -22,6 +30,52 @@ test('declares one ordinary tree resource for the generic grid', (t) => {
         { method: 'acquireAuthority', label: 'acquire', confirm: true, kinds: ['security.authority'] },
         { method: 'releaseAuthority', label: 'release mine', confirm: true, kinds: ['security.authority'] }
     ])
+})
+
+test('remote security evidence is allow-listed and process history is bounded', (t) => {
+    const rebuilt = securityEventFromRemote(
+        'cell',
+        {
+            at: 1,
+            kind: 'ai-access',
+            code: 'refused',
+            peer: 'assistant',
+            namespace: 'line',
+            method: 'setMode',
+            effect: 'operate',
+            allowed: false,
+            token: 'token-must-not-cross',
+            reason: 'private policy detail'
+        },
+        100
+    )
+    t.deepEqual(rebuilt, {
+        at: 100,
+        kind: 'ai-access',
+        severity: 'medium',
+        evidence: 'peer',
+        target: 'cell',
+        peer: 'assistant',
+        namespace: 'line',
+        method: 'setMode',
+        effect: 'operate',
+        allowed: false,
+        code: 'refused'
+    })
+    if (!rebuilt) return t.fail('expected the declared event vocabulary to be accepted')
+    t.is(securityEventFromRemote('cell', { kind: 'ai-access', code: 'invented' }), undefined)
+
+    const history = new SecurityEventHistory(2)
+    history.record(rebuilt)
+    history.record({ ...rebuilt, at: 101 })
+    history.record({ ...rebuilt, at: 102 })
+    t.deepEqual(
+        history.snapshot().map(({ id, at }) => ({ id, at })),
+        [
+            { id: 3, at: 102 },
+            { id: 2, at: 101 }
+        ]
+    )
 })
 
 test('authority action subjects decode only the provider-owned opaque identity', (t) => {

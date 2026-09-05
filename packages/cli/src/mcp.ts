@@ -6,6 +6,7 @@ import {
     defineRpcContext,
     readableNameFor,
     rpcComponent,
+    TransportEvent,
     validateValue,
     type DescribedComponentAuthority,
     type DescribedMethod,
@@ -24,7 +25,15 @@ import {
     type ServerDescription,
     type TypeNode
 } from '@source-repo/rpc'
-import { SECURITY_RESOURCE, SecurityDataProvider, securityAuthorityTargetOf, type SecurityDescription, type SecurityRow } from '@source-repo/query'
+import {
+    SECURITY_RESOURCE,
+    SecurityDataProvider,
+    SecurityEventHistory,
+    securityAuthorityTargetOf,
+    securityEventFromRemote,
+    type SecurityDescription,
+    type SecurityRow
+} from '@source-repo/query'
 import { connectNetwork, type NetworkOptions } from './network.js'
 import { looksLikeSchema, startFake, type FakeScript } from './fake.js'
 import { environmentFor } from './scripts.js'
@@ -985,6 +994,41 @@ export const startMcp = async (options: McpOptions) => {
 
     const securityEpoch = randomUUID()
     let securityRevision = 0
+    const securityEvents = new SecurityEventHistory(200)
+    const securityFollowing = new Map<string, { remote: Subscribable; handler: (...args: unknown[]) => void; ready: Promise<void> }>()
+
+    /** Keep one authorized subscription per live peer; concurrent DataProvider reads share it. */
+    const followSecurity = async (peer: string) => {
+        const existing = securityFollowing.get(peer)
+        if (existing) return existing.ready
+        const remote = await network.proxy<Subscribable>('msgrpc', peer)
+        const raced = securityFollowing.get(peer)
+        if (raced) return raced.ready
+        const handler = (value: unknown) => {
+            const rebuilt = securityEventFromRemote(peer, value)
+            if (rebuilt) securityEvents.record(rebuilt)
+        }
+        const ready = remote.on('security', handler).then(() => undefined)
+        const following = { remote, handler, ready }
+        securityFollowing.set(peer, following)
+        try {
+            await ready
+        } catch (failure) {
+            if (securityFollowing.get(peer) === following) securityFollowing.delete(peer)
+            throw failure
+        }
+    }
+
+    const unfollowSecurity = async (peer: string) => {
+        const following = securityFollowing.get(peer)
+        if (!following) return
+        securityFollowing.delete(peer)
+        await following.ready.then(() => following.remote.off('security', following.handler)).catch(() => undefined)
+    }
+
+    // A replacement under the same name needs a fresh remote listener; its predecessor took the
+    // old subscription with it. Retaining only the local marker would silently stop collection.
+    for (const transport of network.transports) transport.on(TransportEvent.peerGone, (peer: string) => void unfollowSecurity(peer))
 
     /**
      * The Security DataProvider projected from what this MCP identity can establish right now.
@@ -1011,6 +1055,8 @@ export const startMcp = async (options: McpOptions) => {
                 return
             }
             const msgrpc = description.namespaces.find((namespace) => namespace.name === 'msgrpc')
+            if (msgrpc?.events.some((event) => event.name === 'security')) await followSecurity(peer).catch(() => undefined)
+            else await unfollowSecurity(peer)
             if (!msgrpc?.methods.some((method) => method.name === 'authorities')) return
             try {
                 const remote = await network.proxy<{ authorities(): Promise<DescribedComponentAuthority[]> }>('msgrpc', peer)
@@ -1025,6 +1071,7 @@ export const startMcp = async (options: McpOptions) => {
             descriptions,
             refused,
             authorities,
+            events: securityEvents.snapshot(),
             observerLabel: `MCP persona ${options.name}`,
             observer: {
                 // This process knows the name it sends. It cannot prove what a remote hub or broker
@@ -1945,6 +1992,7 @@ export const startMcp = async (options: McpOptions) => {
         // Before the network goes: a fake left running would hold a link this is about to drop.
         for (const fake of fakes.values()) await fake.close().catch(() => undefined)
         fakes.clear()
+        for (const peer of [...securityFollowing.keys()]) await unfollowSecurity(peer)
         // Scripts are separate processes, so they would outlive this one and go on holding peer
         // names nobody is serving. Stopped rather than orphaned.
         await scripting?.close()
