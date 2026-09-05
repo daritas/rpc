@@ -169,6 +169,25 @@ through the Security DataProvider, generic value renderer, traffic row boundary 
 serializer. Metadata traffic excludes arguments, results and detailed errors; payload capture is a
 deliberate opt-in and those application values are not claimed to be redacted.
 
+### AI observers and personas
+
+The same Security DataProvider is intended for MCP use, but the observer changes: its reads and
+actions must leave the MCP peer under that peer's own authenticated `ai-tool` identity. An MCP
+aggregate must not relay through the web console or publish itself as a more privileged network
+provider, either of which would make the target authorize the intermediary instead of the AI.
+
+One MCP process currently has one Source RPC identity. Distinct PLC-development and
+security-administration personas therefore run as distinct HTTP-only MCP tasks with separate peer
+names, bus credentials, ports and MCP door tokens. A persona is selected by which authenticated
+door the client connects to, never by a prompt or tool argument. `ai.tool.write`,
+`ai.tool.program`, and `ai.sponsor` remain independent target-side grants, with ordinary
+`authorize()` narrowing the exact nodes and methods underneath them.
+
+The generic MCP DataProvider adapter and current Security resource hydration are implemented. Its
+declared authority actions call the target directly under the selected persona. Bounded
+security-event history is the next parity slice; the separate-principal task boundary landed first
+so these reads and actions cannot accidentally inherit a shared administrative identity.
+
 ### The management surface
 
 `manageRpc` is **not exposed by default**. Enabling it publishes exactly one method, `createRpcInstance`, which constructs an instance of a class already passed to `exposeClass()`:

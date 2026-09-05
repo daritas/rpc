@@ -439,6 +439,7 @@ export const App = () => {
                 peers,
                 descriptions: known,
                 refused: describeRefusals,
+                observerLabel: 'Current console link',
                 authorities,
                 events: securityEvents,
                 ...(linkIdentity

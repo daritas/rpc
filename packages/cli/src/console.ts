@@ -5,6 +5,7 @@ import { extname, join, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { EventEmitter } from 'events'
 import { MqttTransport, RpcServer, SCHEMA_VERSION, TransportEvent, rpc, rpcNamespace, type DescribedComponentAuthority, type RelayedFrame, type RpcComponentAuthority, type RpcInvocationHandle, type RpcSchema, type RpcTransportDescription, type ServerDescription } from '@source-repo/rpc'
+import { securityAuthorityTargetOf } from '@source-repo/query'
 import { networkTransports, type NetworkOptions } from './network.js'
 import { BusService, DEFAULT_TAP_TTL, type TapFilter, type TappedFrame } from './bus.js'
 // The tap's own contract, merged with the console's below: one server, and a schema has to describe
@@ -231,26 +232,6 @@ const operationalCodes = {
 
 const safeEventString = (value: unknown): string | undefined => (typeof value === 'string' && value.length <= 256 ? value : undefined)
 const safeEventNumber = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
-
-/** Decode only the authority row identity the Security DataProvider owns. */
-const authorityTargetOf = (id: string): { peer: string; namespace: string } | undefined => {
-    try {
-        const value: unknown = JSON.parse(id)
-        if (
-            !Array.isArray(value) ||
-            value.length !== 5 ||
-            value[0] !== 'security-row' ||
-            value[1] !== 'authority' ||
-            typeof value[2] !== 'string' ||
-            value[3] !== 'component' ||
-            typeof value[4] !== 'string'
-        )
-            return undefined
-        return { peer: value[2], namespace: value[4] }
-    } catch {
-        return undefined
-    }
-}
 
 type TransportPosture = { label: string; fields: Readonly<Record<string, string>> }
 
@@ -653,7 +634,7 @@ export class ConsoleService extends EventEmitter {
 
     /** Resolve an action subject against current disclosed authority rows before commanding it. */
     private async authorityTarget(id: string) {
-        const target = authorityTargetOf(id)
+        const target = securityAuthorityTargetOf(id)
         if (!target) throw Object.assign(new Error('the action subject is not a Security authority row'), { code: 'InvalidParams' })
         const current = await this.authorities(target.peer)
         if (!current.some((authority) => authority.namespace === target.namespace))

@@ -238,6 +238,12 @@ actions are shown only when the embedding host supplies an action dispatcher. A 
 gets no inert buttons. The dispatcher still receives the declared method and opaque row id; it does
 not infer a target from the row's presentation fields.
 
+The MCP adapter follows the same rule. `list_data_resources` carries the declaration,
+`read_data` applies one advertised read verb, and `invoke_data_action` exists only because that
+embedding supplies a dispatcher. It resolves the current row before invoking anything and then
+uses the already-declared RPC operation under the MCP peer's identity. These are generic adapters
+over `RpcDataProvider`, not a second provider interface or a second authorization path.
+
 A reference field contains the target row's id. Its target resource must be declared by the same
 component and should implement `getMany`. Do not declare a reference to an arbitrary non-id field;
 there is no lookup verb that could follow it truthfully.

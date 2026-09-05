@@ -1,6 +1,6 @@
 import test from 'ava'
 import type { RpcGetChildrenResult, RpcGetListResult, ServerDescription } from '@source-repo/rpc'
-import { SECURITY_RESOURCE, SecurityDataProvider, securityAuthorityRowId, type SecurityRow } from './SecurityDataProvider.js'
+import { SECURITY_RESOURCE, SecurityDataProvider, securityAuthorityRowId, securityAuthorityTargetOf, type SecurityRow } from './SecurityDataProvider.js'
 
 const described = (changes: Partial<ServerDescription> = {}): ServerDescription => ({
     name: 'alpha',
@@ -24,6 +24,13 @@ test('declares one ordinary tree resource for the generic grid', (t) => {
     ])
 })
 
+test('authority action subjects decode only the provider-owned opaque identity', (t) => {
+    const id = securityAuthorityRowId('alpha', 'line')
+    t.deepEqual(securityAuthorityTargetOf(id), { peer: 'alpha', namespace: 'line' })
+    t.is(securityAuthorityTargetOf(JSON.stringify(['security-row', 'authority', 'alpha', 'component', 'line', 'extra'])), undefined)
+    t.is(securityAuthorityTargetOf('not-json'), undefined)
+})
+
 test('keeps an undescribed or refused peer unknown without exposing the refusal', (t) => {
     const provider = new SecurityDataProvider({ peers: ['lost'], descriptions: {}, refused: { lost: new Error('token=secret') } })
     const rows = rowsOf(list(provider))
@@ -42,6 +49,7 @@ test('states what is known on the browser link without treating a routed source 
     const authenticated = new SecurityDataProvider({
         peers: [],
         descriptions: {},
+        observerLabel: 'Current MCP persona',
         observer: {
             authentication: 'authenticated',
             authenticationEvidence: 'link',
@@ -53,6 +61,8 @@ test('states what is known on the browser link without treating a routed source 
     })
     const known = rowsOf(list(authenticated)).find((row) => row.category === 'identity')
     t.like(known, { evidence: 'link', authentication: 'authenticated', source: 'page-7', identity: 'anders', roles: ['operator'] })
+    const roots = authenticated.dataRequest('getChildren', ['security'], {}) as RpcGetChildrenResult
+    t.is((roots.data[0] as { name: string }).name, 'Current MCP persona')
 
     const routed = new SecurityDataProvider({
         peers: [],
@@ -134,7 +144,7 @@ test('tree scopes findings and peer sections without turning leaves into branche
     })
     const roots = provider.dataRequest('getChildren', ['security'], {}) as RpcGetChildrenResult
     t.deepEqual(roots.data, [
-        { name: 'Current console link', authentication: 'unknown', evidence: 'unknown' },
+        { name: 'Current observer', authentication: 'unknown', evidence: 'unknown' },
         { name: 'Findings', findings: 1 },
         { name: 'Events', events: 0 },
         { name: 'Peers', peers: 1 }

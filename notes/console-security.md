@@ -202,3 +202,24 @@ capture remains deliberately verbatim and outside the redaction claim.
 - durable audit/compliance claims;
 - approval workflows or remote access;
 - a green “secure” summary that hides evidence or unknown state.
+
+## MCP access and multiple AI personas
+
+Security will also be exposed to MCP through generic DataProvider tools. The MCP adapter will reuse
+`SecurityDataProvider`; it will not grow a second security model or publish an aggregate whose
+identity launders calls to its targets. Reads leave under the MCP peer's identity, and declared
+authority actions invoke the target's existing `$acquire`/`$release` directly.
+
+Multiple personas are separate principals. The first deployable shape is now implemented in task
+files: each `type: "mcp"` role is HTTP-only and has its own RPC peer name, bus authentication,
+port, and optional `mcpAuth` token file. The target therefore distinguishes a PLC-development
+assistant from a security-administration assistant even when one host process supervises both.
+Neither prompts nor MCP tool arguments can switch that identity.
+
+The MCP-local provider registry, `list_data_resources`, `read_data`, and generic declared-action
+invocation are implemented. The current Security projection is hydrated from the MCP observer's
+authorized descriptions and authority queries with bounded fan-out and unknown/refused peers
+preserved. `observe` needs ordinary authorization; authority acquisition calls the target directly
+and needs `ai.tool.write`. Next, add bounded `msgrpc.security` event collection to the same
+provider. Future policy or grant administration remains `security-admin`/`ai.sponsor` and must
+additionally prevent self-expansion.

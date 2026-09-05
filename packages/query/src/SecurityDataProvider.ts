@@ -97,7 +97,9 @@ export interface SecurityDataProviderOptions {
     readonly descriptions: Readonly<Record<string, SecurityDescription | undefined>>
     /** A refusal changes the explanation, never the trust level. Its raw message is not exposed. */
     readonly refused?: Readonly<Record<string, unknown>>
-    /** What the console established about the browser link carrying its own identity() call. */
+    /** Name of this observation boundary even before its identity facts are available. */
+    readonly observerLabel?: string
+    /** What this observer established about the link carrying its requests. */
     readonly observer?: SecurityObserver
     /** Missing entries are unknown/refused; an empty array is a known answer with no guarded components. */
     readonly authorities?: Readonly<Record<string, readonly DescribedComponentAuthority[] | undefined>>
@@ -132,10 +134,10 @@ export interface SecurityDataEvent {
 }
 
 export interface SecurityObserver {
-    readonly authentication: 'authenticated' | 'none'
-    readonly authenticationEvidence: 'link'
+    readonly authentication: 'authenticated' | 'none' | 'unknown'
+    readonly authenticationEvidence: RpcSecurityEvidence
     readonly source: string
-    readonly sourceEvidence: 'link' | 'unknown'
+    readonly sourceEvidence: RpcSecurityEvidence
     readonly identity?: string
     readonly roles?: readonly string[]
 }
@@ -228,6 +230,26 @@ const rowId = (category: SecurityRow['category'], peer: string, identity: readon
 /** Stable action subject for one real authority record; unknown placeholder rows deliberately use another identity. */
 export const securityAuthorityRowId = (peer: string, namespace: string): string => rowId('authority', peer, ['component', namespace])
 
+/** Decode only the opaque authority-row identity owned by this provider. */
+export const securityAuthorityTargetOf = (id: string): { peer: string; namespace: string } | undefined => {
+    try {
+        const value: unknown = JSON.parse(id)
+        if (
+            !Array.isArray(value) ||
+            value.length !== 5 ||
+            value[0] !== 'security-row' ||
+            value[1] !== 'authority' ||
+            typeof value[2] !== 'string' ||
+            value[3] !== 'component' ||
+            typeof value[4] !== 'string'
+        )
+            return undefined
+        return { peer: value[2], namespace: value[4] }
+    } catch {
+        return undefined
+    }
+}
+
 const evidenceOf = (transport: RpcTransportDescription): RpcSecurityEvidence | 'mixed' => {
     if (!transport.security) return 'unknown'
     const evidence = new Set(Object.values(transport.security).map((fact) => fact.evidence))
@@ -261,6 +283,7 @@ export class SecurityDataProvider implements RpcDataProvider {
     private readonly peers: readonly string[]
     private readonly descriptions: SecurityDataProviderOptions['descriptions']
     private readonly refused: NonNullable<SecurityDataProviderOptions['refused']>
+    private readonly observerLabel: string
     private readonly observer?: SecurityObserver
     private readonly authorities: NonNullable<SecurityDataProviderOptions['authorities']>
     private readonly events: readonly SecurityDataEvent[]
@@ -271,6 +294,7 @@ export class SecurityDataProvider implements RpcDataProvider {
         this.peers = [...new Set(options.peers)].sort()
         this.descriptions = options.descriptions
         this.refused = options.refused ?? {}
+        this.observerLabel = options.observerLabel ?? 'Current observer'
         this.observer = options.observer
         this.authorities = options.authorities ?? {}
         this.events = options.events ?? []
@@ -303,10 +327,10 @@ export class SecurityDataProvider implements RpcDataProvider {
             {
                 id: identityId,
                 kind: 'identity',
-                label: 'Current console link',
+                label: this.observerLabel,
                 hasChildren: false,
                 value: {
-                    name: 'Current console link',
+                    name: this.observerLabel,
                     authentication: this.observer?.authentication ?? 'unknown',
                     evidence: this.observer?.authenticationEvidence ?? 'unknown'
                 }
@@ -422,12 +446,12 @@ export class SecurityDataProvider implements RpcDataProvider {
 
     private eventRows(): readonly (readonly [string, SecurityRow])[] {
         return this.events.map((event) => [
-            rowId('event', event.peer ?? event.target ?? '$console-link', [event.id]),
+            rowId('event', event.peer ?? event.target ?? '$observer-link', [event.id]),
             {
                 name: event.kind,
                 kind: 'security.event',
                 category: 'event',
-                peer: event.peer ?? event.target ?? '$console-link',
+                peer: event.peer ?? event.target ?? '$observer-link',
                 evidence: event.evidence,
                 severity: event.severity,
                 timeframe: 'history',
@@ -456,12 +480,12 @@ export class SecurityDataProvider implements RpcDataProvider {
     private identityRow(): readonly [string, SecurityRow] {
         const observer = this.observer
         return [
-            rowId('identity', '$console-link', ['current']),
+            rowId('identity', '$observer-link', ['current']),
             {
-                name: observer?.identity ?? observer?.source ?? 'Current console link',
+                name: observer?.identity ?? observer?.source ?? this.observerLabel,
                 kind: 'security.identity',
                 category: 'identity',
-                peer: '$console-link',
+                peer: '$observer-link',
                 evidence: observer
                     ? observer.authenticationEvidence === observer.sourceEvidence
                         ? observer.authenticationEvidence

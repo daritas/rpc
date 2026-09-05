@@ -7,6 +7,7 @@ import { startConsole } from './console.js'
 import { loadAuthFile, loadSigningKeys, loadTls, readableByOthers, scriptCredentials, signingFrom, type Signing, type SigningKeys } from './credentials.js'
 import { looksLikeSchema, startFake, type FakeScript } from './fake.js'
 import { grantLines, loadAiGrants } from './grants.js'
+import { startMcp } from './mcp.js'
 import type { NetworkOptions } from './network.js'
 import { startNode } from './node.js'
 
@@ -50,7 +51,7 @@ export interface TaskAuth {
 
 interface CommonTask {
     id: string
-    type: 'console' | 'node' | 'serve'
+    type: 'console' | 'mcp' | 'node' | 'serve'
     network?: TaskNetwork
     name?: string
     /** A path to a key file, or the same keys written inline. */
@@ -82,6 +83,22 @@ export interface NodeTask extends CommonTask {
     grants?: string
 }
 
+/**
+ * One AI-facing network identity served over its own HTTP door.
+ *
+ * There is deliberately no stdio form in a task file: all tasks share one process and therefore
+ * one stdin/stdout pair. Requiring a port keeps every MCP task independently addressable and lets
+ * two personas carry different Source RPC identities without pretending the MCP connection picks
+ * an identity later.
+ */
+export interface McpTask extends CommonTask {
+    type: 'mcp'
+    port: number
+    host?: string
+    /** Path to the MCP door's bearer token. Separate from `auth`, which is shown to the Source bus. */
+    mcpAuth?: string
+}
+
 export interface ServeTask extends CommonTask {
     type: 'serve'
     contract: string
@@ -89,7 +106,7 @@ export interface ServeTask extends CommonTask {
     allowExec?: boolean
 }
 
-export type SourceRpcTask = ConsoleTask | NodeTask | ServeTask
+export type SourceRpcTask = ConsoleTask | McpTask | NodeTask | ServeTask
 
 export interface SourceRpcTaskFile {
     version: 1
@@ -245,7 +262,7 @@ const parseTask = (value: unknown, index: number): SourceRpcTask => {
     const object = objectAt(value, where)
     const id = requiredString(object, 'id', where)
     const type = requiredString(object, 'type', where)
-    if (type !== 'console' && type !== 'node' && type !== 'serve') throw new Error(`${where}.type must be console, node, or serve`)
+    if (type !== 'console' && type !== 'mcp' && type !== 'node' && type !== 'serve') throw new Error(`${where}.type must be console, mcp, node, or serve`)
 
     const network = object.network === undefined ? undefined : parseNetwork(object.network, `${where}.network`)
     const name = optionalString(object, 'name', where)
@@ -284,6 +301,16 @@ const parseTask = (value: unknown, index: number): SourceRpcTask => {
             scriptableBy: stringList(object, 'scriptableBy', where),
             ...(grants ? { grants } : {})
         }
+    }
+
+    if (type === 'mcp') {
+        rejectUnknown(object, [...COMMON_FIELDS, 'host', 'port', 'mcpAuth'], where)
+        const port = optionalPositiveNumber(object, 'port', where)
+        if (port === undefined) throw new Error(`${where}.port is required for an HTTP-only MCP task`)
+        if (!Number.isInteger(port)) throw new Error(`${where}.port must be an integer`)
+        const host = optionalString(object, 'host', where)
+        const mcpAuth = optionalString(object, 'mcpAuth', where)
+        return { ...common, type, port, ...(host ? { host } : {}), ...(mcpAuth ? { mcpAuth } : {}) }
     }
 
     rejectUnknown(object, [...COMMON_FIELDS, 'contract', 'script', 'allowExec'], where)
@@ -328,6 +355,8 @@ interface PreparedTask {
     credentialFor?: (script: string) => Promise<{ name: string; token: string }>
     aiGrants?: RpcAiGrants
     tls?: TlsServerOptions
+    /** The MCP client-facing token, read before anything starts and never confused with bus auth. */
+    doorToken?: string
 }
 
 /** Where a task's identity came from: a file beside the task file, or the task file itself. */
@@ -354,6 +383,20 @@ const authFor = (task: SourceRpcTask, directory: string, warning: (message: stri
     const loaded = loadAuthFile(path)
     if (loaded.readableByOthers) warning(`task "${task.id}": ${path} is readable by other users`)
     return { ...(loaded.auth.token ? { token: loaded.auth.token } : {}), ...(loaded.auth.derive ? { derive: loaded.auth.derive } : {}) }
+}
+
+const mcpDoorTokenFor = (task: McpTask, directory: string, warning: (message: string) => void): string | undefined => {
+    if (!task.mcpAuth) return undefined
+    const path = resolve(directory, task.mcpAuth)
+    if (readableByOthers(path)) warning(`task "${task.id}": ${path} is readable by other users`)
+    let token: string
+    try {
+        token = readFileSync(path, 'utf8').trim()
+    } catch (e) {
+        throw new Error(`cannot read MCP door token from ${path}: ${e instanceof Error ? e.message : String(e)}`, { cause: e })
+    }
+    if (!token) throw new Error(`task "${task.id}": ${path} contains no MCP door token`)
+    return token
 }
 
 const prepareTasks = (file: string, config: SourceRpcTaskFile, callbacks: TaskFileCallbacks): PreparedTask[] => {
@@ -395,6 +438,7 @@ const prepareTasks = (file: string, config: SourceRpcTaskFile, callbacks: TaskFi
         // Read with everything else, so an unreadable security policy is one of the things wrong
         // with the file rather than a node that starts and then disagrees with its operator.
         const aiGrants = task.type === 'node' && task.grants ? loadAiGrants(resolve(directory, task.grants)) : undefined
+        const doorToken = task.type === 'mcp' ? mcpDoorTokenFor(task, directory, warn) : undefined
 
         if (task.type === 'serve') {
             const contractPath = resolve(directory, task.contract)
@@ -404,7 +448,14 @@ const prepareTasks = (file: string, config: SourceRpcTaskFile, callbacks: TaskFi
             const script = scriptPath ? (readJson(scriptPath, 'script') as FakeScript) : undefined
             return { task, network, schema, ...(script ? { script } : {}) }
         }
-        return { task, network, ...(credentialFor ? { credentialFor } : {}), ...(tls ? { tls } : {}), ...(aiGrants ? { aiGrants } : {}) }
+        return {
+            task,
+            network,
+            ...(credentialFor ? { credentialFor } : {}),
+            ...(tls ? { tls } : {}),
+            ...(aiGrants ? { aiGrants } : {}),
+            ...(doorToken ? { doorToken } : {})
+        }
     })
 
     const duplicate = prepared.find((entry, index) => prepared.findIndex((candidate) => candidate.network.name === entry.network.name) !== index)
@@ -464,6 +515,17 @@ export const startTaskFile = async (path: string, callbacks: TaskFileCallbacks =
                 running.push({ info: { id: task.id, type: task.type, name: network.name, url: console.url }, close: console.close })
                 if (task.host && task.host !== '127.0.0.1' && task.host !== 'localhost')
                     callbacks.warning?.(`task "${task.id}": console is bound to ${task.host}; anyone who can reach it can use its granted authority`)
+            } else if (task.type === 'mcp') {
+                const mcp = await startMcp({
+                    ...network,
+                    stdio: false,
+                    host: task.host ?? '127.0.0.1',
+                    port: task.port,
+                    ...(entry.doorToken ? { doorToken: entry.doorToken } : {})
+                })
+                const host = task.host ?? '127.0.0.1'
+                running.push({ info: { id: task.id, type: task.type, name: network.name, url: `http://${host}:${task.port}` }, close: mcp.close })
+                callbacks.warning?.(`task "${task.id}": MCP clients use Source RPC identity "${network.name}"; this door cannot switch personas`)
             } else if (task.type === 'node') {
                 const node = await startNode({
                     ...network,

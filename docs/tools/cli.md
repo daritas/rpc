@@ -16,7 +16,7 @@ source-rpc diff      compare what two live peers expose
 source-rpc console   browse it in a browser: peers, what they expose, calls and events
 source-rpc broker    run a WebSocket bus for peers with no MQTT broker to share, with a traffic tap
 source-rpc node      make this machine scriptable from another one, and nothing else
-source-rpc run       start console, node and serve roles together from one JSON task file
+source-rpc run       start console, MCP, node and serve roles together from one JSON task file
 source-rpc mcp       serve the network to an MCP client over stdio
 source-rpc peers     who is on the network right now
 source-rpc describe  what one peer exposes
@@ -675,6 +675,35 @@ The filename is defaulted; the command is not. Bare `source-rpc` prints the usag
 
 Every task is still a separate Source RPC peer. Its name comes from `name`, then from the optional name in its signing file, and finally from `id`. Duplicate peer names are refused before anything starts. Each signing file therefore remains an identity of its own; putting three roles in one process does not make them share authority.
 
+The same rule permits several AI personas without turning a persona into a model-selectable mode:
+
+```json
+{
+  "version": 1,
+  "network": { "hub": "https://site-a.example:7843" },
+  "tasks": [
+    {
+      "id": "plc-development",
+      "type": "mcp",
+      "name": "site-a-plc-assistant",
+      "auth": "plc-assistant.auth.json",
+      "port": 7851,
+      "mcpAuth": "plc-assistant.mcp-token"
+    },
+    {
+      "id": "security-administration",
+      "type": "mcp",
+      "name": "site-a-security-assistant",
+      "auth": "security-assistant.auth.json",
+      "port": 7852,
+      "mcpAuth": "security-assistant.mcp-token"
+    }
+  ]
+}
+```
+
+`auth` is presented to the Source RPC hub and determines which principal target nodes authorize. `mcpAuth` protects the client-facing MCP HTTP door. They are different credentials with different jobs; possession of one persona's MCP token must never select or unlock the other persona. The target-side grant documents then give the PLC principal `ai.tool.write` or `ai.tool.program` only where intended, and give the security principal `ai.sponsor` only on the site section it administers. Ordinary `authorize()` remains the method-level veto in both cases.
+
 ### Credentials in the file
 
 `sign` and `auth` each take a path or the thing the path would have pointed at, and the shape decides which. Written out, one host needs one file:
@@ -728,11 +757,11 @@ What is left to fill in is what the command cannot know: the bus, a real contrac
 
 `sign`, `auth`, `scripts`, `contract` and `script` paths are resolved relative to the task file, not the shell's working directory. The file is strict: unknown fields, duplicate ids, missing role settings and a network with no endpoint are startup errors. If the third task cannot start, the first two are closed before `run` fails. Ctrl-C and SIGTERM close tasks in reverse startup order.
 
-`console` accepts `host`, `port`, `basePath`, and `cert` with `key` to serve HTTPS. `node` requires `scripts` and a non-empty `scriptableBy`. `serve` requires `contract`, accepts `script`, and accepts `allowExec` only as an explicit boolean; it has the same development-machine warning and risk as the command-line flag.
+`console` accepts `host`, `port`, `basePath`, and `cert` with `key` to serve HTTPS. `mcp` requires an HTTP `port`, accepts `host`, and accepts `mcpAuth` as a path to the bearer token protecting that door; its `auth` and `sign` still identify it to the Source RPC network. `node` requires `scripts` and a non-empty `scriptableBy`. `serve` requires `contract`, accepts `script`, and accepts `allowExec` only as an explicit boolean; it has the same development-machine warning and risk as the command-line flag.
 
 `cert` and `key` behave exactly as the flags of the same name do: both together or neither, and a certificate moves the default port from 7844 to 8844, so a task file that names one and no port lands where a TLS peer looks. Both are read while the file is being checked, so a missing certificate is a startup error rather than a rollback halfway through starting the other roles.
 
-Broker and MCP roles are deliberately not task types. A broker is shared infrastructure with different authentication and relay ownership. MCP owns stdio and its client lifetime. Combining either with host roles would make one process responsible for unrelated failure domains rather than remove useful repetition.
+An MCP task is HTTP-only. It cannot claim the task runner's shared stdin/stdout, and it therefore requires its own port. This is also the safe first shape for multiple AI personas: each task has a distinct peer name, `auth`/`sign` identity, HTTP port and `mcpAuth` token. An MCP client cannot select another task's identity in a prompt or tool argument. Broker remains deliberately outside the task types because it is shared infrastructure with different authentication and relay ownership.
 
 ## Ports
 

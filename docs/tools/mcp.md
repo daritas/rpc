@@ -12,6 +12,9 @@ Serves the network to an [MCP](https://modelcontextprotocol.io) client over stdi
 | `list_peers` | who is on the network right now |
 | `describe_peer` | one peer's namespaces, methods, argument names and types, and events |
 | `call_method` | call a method, with positional arguments, and return what it returns |
+| `list_data_resources` | generic resources available through this observer; initially Security |
+| `read_data` | apply an advertised DataProvider read verb to a resource |
+| `invoke_data_action` | invoke an action advertised for a current DataProvider row |
 | `read_state` | what a component is publishing — its props and state, as values |
 | `set_state` | change one value, by naming the path rather than working out the method |
 | `list_writable` | what a store-backed node will let you change, asked before you are refused |
@@ -25,6 +28,27 @@ Serves the network to an [MCP](https://modelcontextprotocol.io) client over stdi
 | `watch_traffic` | what other peers are saying to each other, for a few seconds |
 | `watch_events` | what one peer emitted, for a few seconds — and whether anything was missed since the last watch |
 | `save_contract` / `list_contracts` | only with `--contracts <dir>` |
+
+### Reading the same Security resource as the console
+
+`list_data_resources` currently advertises the local `security` provider. `read_data` applies its
+ordinary `getChildren`, `getList`, or `getOne` verb, with the same opaque branch and row ids,
+filters, sorting and paging as the web console's tree-scope-grid. The MCP server composes this view
+locally from descriptions and live authority queries made under its own Source RPC identity.
+Descriptions or authority state it is forbidden to read remain visible as unknown; their raw
+refusal text is not copied into the rows.
+
+`invoke_data_action` resolves a current row again and accepts only an action its resource declares.
+The first actions are `acquireAuthority` and `releaseAuthority`: acquisition requires exactly a
+one-, five-, or fifteen-minute TTL, takeover is absent, and release affects only a lease held by
+this MCP peer. The call then goes directly to the component's existing `$acquire` or `$release`.
+For an `ai-tool` principal the target therefore requires `ai.tool.write` as well as its ordinary
+authorization; the MCP wrapper grants nothing.
+
+The Security provider is local to the MCP process and is not published onto Source RPC. Publishing
+an aggregate would make another caller's reads leave under the MCP process's identity, changing
+the security meaning of the request. Bounded security-event history will be added through this same
+resource; this first MCP slice reports current posture and authority.
 
 ### Reading what a device holds
 
@@ -163,6 +187,14 @@ source-rpc mcp --hub http://bus:7843 --scripts ./scripts --port 8590
 `--port` serves streamable HTTP beside stdio: a POST carrying one JSON-RPC message, a JSON answer. Every client — stdio and however many attach over HTTP — shares one view of the scripts, the fakes, the watches and their loss cursors, because there is only one of everything in the process; that is the reason the door exists, and why it deliberately assigns no session ids. There is no server-initiated stream (GET answers 405) and no batching.
 
 The bind follows the console's instinct: `127.0.0.1` unless `--host` widens it, and access control was designed before the port opened, because an HTTP door is a new surface where stdio's authorization was implicit in process ownership. The token comes from `SOURCE_RPC_MCP_TOKEN` or `--mcp-auth <file>` — never a flag value, since `ps` is readable by everyone on the box — and the rules are stated at startup and fail closed where it matters: a door widened past loopback **without a token refuses to start**, and a loopback door without one says plainly that any process on this machine can drive the node.
+
+### One door, one AI principal
+
+Every client of one MCP process drives the same Source RPC peer identity. The HTTP bearer token controls who may use that process; it does not choose a plant identity per request. A tool argument or prompt therefore cannot switch the server from a PLC-development persona to a security-administration persona.
+
+Where two personas need different authority, run two MCP roles with different peer names, bus credentials, ports and MCP tokens. `source-rpc run` supports `type: "mcp"` tasks for this purpose. They are HTTP-only because one task-runner process has only one stdin/stdout pair, and each requires a `port`. See [Task files](cli.md#task-files) for a complete two-persona example.
+
+This is the deployable boundary until session-bound derived identities exist. A future multiplexed service must bind an authenticated MCP session to one derived Source RPC credential and preserve that principal to every target; adding `persona` to a tool call would be an impersonation feature, not identity propagation.
 
 ### Watching without wondering
 

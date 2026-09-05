@@ -7,7 +7,19 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { connectAsync } from 'mqtt'
-import { createHmacSigner, createHmacVerifier, defaultSecureWebPort, defaultWebPort, RpcClient, RpcServer, type RpcSchema } from '@source-repo/rpc'
+import {
+    createHmacSigner,
+    createHmacVerifier,
+    createTokenAuthenticator,
+    defaultSecureWebPort,
+    defaultWebPort,
+    rpc,
+    rpcNamespace,
+    RpcClient,
+    RpcComponent,
+    RpcServer,
+    type RpcSchema
+} from '@source-repo/rpc'
 import { connectNetwork } from './network.js'
 import { consolePortFor, parseTaskFile, startTaskFile, taskFileSkeleton, type ConsoleTask, type StartedTask } from './tasks.js'
 
@@ -29,6 +41,18 @@ const schema: RpcSchema = {
             methods: { ping: { params: [], returns: { kind: 'string' } } },
             events: {}
         }
+    }
+}
+
+@rpcNamespace('persona-cell')
+class PersonaCell extends RpcComponent<Record<string, never>, { mode: string }> {
+    constructor() {
+        super({}, { mode: 'idle' })
+    }
+
+    @rpc({ semantics: 'idempotent-command', effect: 'operate', requiresAuthority: true })
+    async setMode(mode: string) {
+        this.setState({ mode })
     }
 }
 
@@ -65,6 +89,18 @@ const getOverTls = (url: string, ca: Buffer) =>
         call.end()
     })
 
+const freePort = async () => {
+    const server = createServer()
+    await new Promise<void>((resolve, reject) => {
+        server.once('error', reject)
+        server.listen(0, '127.0.0.1', resolve)
+    })
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('test server did not get a TCP port')
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    return address.port
+}
+
 test('task files reject misspelled fields instead of ignoring intent', (t) => {
     const failure = t.throws(() =>
         parseTaskFile({
@@ -74,6 +110,17 @@ test('task files reject misspelled fields instead of ignoring intent', (t) => {
         })
     )
     t.regex(failure.message, /tasks\[0\].*unknown field "scritpableBy"/)
+})
+
+test('an MCP task requires its own HTTP port rather than claiming shared stdio', (t) => {
+    const failure = t.throws(() =>
+        parseTaskFile({
+            version: 1,
+            network: { hub: 'http://localhost:7590' },
+            tasks: [{ id: 'plc-assistant', type: 'mcp' }]
+        })
+    )
+    t.regex(failure.message, /port is required for an HTTP-only MCP task/)
 })
 
 test('credentials a bus checks are refused in a file that only presents them', (t) => {
@@ -275,6 +322,160 @@ test('one task file starts console, node and serve roles with paths relative to 
         t.is((await fetch('http://127.0.0.1:7591')).status, 200)
     } finally {
         await caller.close()
+        await tasks.close()
+        await hub.close()
+        rmSync(directory, { recursive: true, force: true })
+    }
+})
+
+test.serial('two MCP tasks keep separate authenticated AI personas', async (t) => {
+    const directory = mkdtempSync(join(tmpdir(), 'source-rpc-task-personas-'))
+    const ports = new Set<number>()
+    while (ports.size < 3) ports.add(await freePort())
+    const [hubPort, plcPort, securityPort] = [...ports]
+    const plcName = peer('plc-assistant')
+    const securityName = peer('security-assistant')
+    const hubName = peer('persona-hub')
+    const plcBusToken = `plc-bus-${run}`
+    const securityBusToken = `security-bus-${run}`
+    const plcDoorToken = `plc-door-${run}`
+    const securityDoorToken = `security-door-${run}`
+    writeFileSync(join(directory, 'plc.mcp-token'), plcDoorToken, { mode: 0o600 })
+    writeFileSync(join(directory, 'security.mcp-token'), securityDoorToken, { mode: 0o600 })
+    const file = join(directory, 'personas.tasks.json')
+    writeFileSync(
+        file,
+        JSON.stringify({
+            version: 1,
+            network: { hub: `http://127.0.0.1:${hubPort}`, timeout: 4000 },
+            tasks: [
+                { id: 'plc', type: 'mcp', name: plcName, auth: { token: plcBusToken }, port: plcPort, mcpAuth: './plc.mcp-token' },
+                { id: 'security', type: 'mcp', name: securityName, auth: { token: securityBusToken }, port: securityPort, mcpAuth: './security.mcp-token' }
+            ]
+        }),
+        { mode: 0o600 }
+    )
+
+    const seen: string[] = []
+    const hub = new RpcServer({
+        name: hubName,
+        transports: [{ port: hubPort, host: '127.0.0.1' }],
+        authenticate: createTokenAuthenticator({
+            [plcBusToken]: { name: plcName, roles: ['ai-tool', 'plc-development'] },
+            [securityBusToken]: { name: securityName, roles: ['ai-tool', 'security-administration'] }
+        }),
+        aiGrants: { grants: 1, revision: 1, open: { 'ai.tool.write': { to: [plcName], expiresAt: Date.now() + 60_000 } } },
+        exposeIntrospection: true,
+        authorize: ({ identity, method }) => {
+            if (method === 'describe') seen.push(identity?.name ?? 'anonymous')
+            if (method === 'describe' || method === 'authorities') return true
+            if (method === '$acquire' || method === '$release') return identity?.roles?.includes('plc-development') ?? false
+            return false
+        }
+    })
+    hub.exposeClassInstance(new PersonaCell())
+    await hub.ready()
+    const warnings: string[] = []
+    const tasks = await startTaskFile(file, { warning: (warning) => warnings.push(warning) })
+
+    const callThrough = async (port: number, doorToken: string, name: string, args: Record<string, unknown> = {}) => {
+        const response = await fetch(`http://127.0.0.1:${port}`, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${doorToken}`, 'content-type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'tools/call',
+                params: { name, arguments: args }
+            })
+        })
+        t.is(response.status, 200)
+        const answer = (await response.json()) as { result?: { content?: { text?: string }[]; isError?: boolean } }
+        t.false(!!answer.result?.isError)
+        return JSON.parse(answer.result?.content?.[0]?.text ?? '{}') as Record<string, unknown>
+    }
+
+    try {
+        await callThrough(plcPort, plcDoorToken, 'describe_peer', { peer: hubName })
+        await callThrough(securityPort, securityDoorToken, 'describe_peer', { peer: hubName })
+        t.deepEqual(new Set(seen), new Set([plcName, securityName]))
+        t.deepEqual(
+            tasks.tasks.map(({ id, type, name }) => ({ id, type, name })),
+            [
+                { id: 'plc', type: 'mcp', name: plcName },
+                { id: 'security', type: 'mcp', name: securityName }
+            ]
+        )
+        t.true(warnings.some((warning) => warning.includes(`identity "${plcName}"`) && warning.includes('cannot switch personas')))
+        t.true(warnings.some((warning) => warning.includes(`identity "${securityName}"`) && warning.includes('cannot switch personas')))
+
+        const resources = await callThrough(plcPort, plcDoorToken, 'list_data_resources')
+        t.is(((resources.providers as { provider: string }[])[0]).provider, 'security')
+        const roots = await callThrough(plcPort, plcDoorToken, 'read_data', {
+            provider: 'security',
+            method: 'getChildren',
+            resource: ['security'],
+            params: {}
+        })
+        t.is(((roots.data as { name: string }[])[0]).name, `MCP persona ${plcName}`)
+
+        const securityRows = await callThrough(plcPort, plcDoorToken, 'read_data', {
+            provider: 'security',
+            method: 'getList',
+            resource: ['security'],
+            params: { recursive: true, pagination: { page: 0, pageSize: 100 } }
+        })
+        const authorityAt = (securityRows.data as { kind?: string }[]).findIndex((row) => row.kind === 'security.authority')
+        t.true(authorityAt >= 0)
+        const authorityId = (securityRows.ids as string[])[authorityAt]
+        const acquired = await callThrough(plcPort, plcDoorToken, 'invoke_data_action', {
+            provider: 'security',
+            resource: ['security'],
+            id: authorityId,
+            action: 'acquireAuthority',
+            args: [60_000]
+        })
+        t.is(acquired.status, 'acquired')
+        const liveAuthority = (acquired.authorities as { namespace: string; authority: { holder?: string } }[]).find((entry) => entry.namespace === 'persona-cell')
+        t.is(liveAuthority?.authority.holder, plcName, 'the target sees the selected MCP persona rather than the task runner')
+        const released = await callThrough(plcPort, plcDoorToken, 'invoke_data_action', {
+            provider: 'security',
+            resource: ['security'],
+            id: authorityId,
+            action: 'releaseAuthority'
+        })
+        t.is(released.status, 'released')
+
+        const ungranted = await fetch(`http://127.0.0.1:${securityPort}`, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${securityDoorToken}`, 'content-type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 3,
+                method: 'tools/call',
+                params: {
+                    name: 'invoke_data_action',
+                    arguments: {
+                        provider: 'security',
+                        resource: ['security'],
+                        id: authorityId,
+                        action: 'acquireAuthority',
+                        args: [60_000]
+                    }
+                }
+            })
+        })
+        const ungrantedAnswer = (await ungranted.json()) as { result?: { content?: { text?: string }[]; isError?: boolean } }
+        t.true(!!ungrantedAnswer.result?.isError)
+        t.regex(ungrantedAnswer.result?.content?.[0]?.text ?? '', /Forbidden/, 'a security persona does not inherit PLC operating authority')
+
+        const wrongDoor = await fetch(`http://127.0.0.1:${securityPort}`, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${plcDoorToken}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' })
+        })
+        t.is(wrongDoor.status, 401, 'one persona\'s MCP token must not open the other persona\'s door')
+    } finally {
         await tasks.close()
         await hub.close()
         rmSync(directory, { recursive: true, force: true })

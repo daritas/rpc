@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { createServer as createHttpServer } from 'node:http'
 import { join, resolve, sep } from 'node:path'
 import {
@@ -6,6 +7,7 @@ import {
     readableNameFor,
     rpcComponent,
     validateValue,
+    type DescribedComponentAuthority,
     type DescribedMethod,
     type RemoteSurface,
     type RpcComponentData,
@@ -13,6 +15,8 @@ import {
     type RpcComponentStore,
     type RpcContextSnapshot,
     type RpcContextStore,
+    type RpcDataMethod,
+    type RpcDataParams,
     type RpcRowRead,
     type RpcSchema,
     type RpcWritableResource,
@@ -20,6 +24,7 @@ import {
     type ServerDescription,
     type TypeNode
 } from '@source-repo/rpc'
+import { SECURITY_RESOURCE, SecurityDataProvider, securityAuthorityTargetOf, type SecurityDescription, type SecurityRow } from '@source-repo/query'
 import { connectNetwork, type NetworkOptions } from './network.js'
 import { looksLikeSchema, startFake, type FakeScript } from './fake.js'
 import { environmentFor } from './scripts.js'
@@ -58,6 +63,11 @@ const ownVersion = () => {
 }
 
 export interface McpOptions extends NetworkOptions {
+    /**
+     * Listen on this process's stdin/stdout. Defaults to true. Task-file MCP roles turn this off:
+     * a process has only one stdio stream, while each HTTP door represents a separate AI principal.
+     */
+    stdio?: boolean
     /**
      * Where contracts may be written and read. Absent means the contract tools are not offered at
      * all, which is why it is a flag: a model that cannot write files should not be shown tools
@@ -119,6 +129,20 @@ export interface McpOptions extends NetworkOptions {
  * and the conversation would look like it had hung.
  */
 const MAX_WATCH_SECONDS = 60
+
+/** Bounded fan-out for network-wide observations: a large peer list must not become one burst. */
+const forEachBounded = async <T>(values: readonly T[], concurrency: number, visit: (value: T) => Promise<void>) => {
+    let next = 0
+    await Promise.all(
+        Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+            for (;;) {
+                const at = next++
+                if (at >= values.length) return
+                await visit(values[at])
+            }
+        })
+    )
+}
 
 /** Subscribing to a peer's events, for the watching tools. */
 type Subscribable = {
@@ -242,6 +266,50 @@ const toolsFor = (contracts: string | undefined, allowExec = false, scripts?: st
         name: 'list_peers',
         description: 'List the peers currently on the msgrpc network, with the ones this server can reach right now.',
         inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+    },
+    {
+        name: 'list_data_resources',
+        description:
+            'List the DataProvider resources available through this MCP observer. These are stable, generic resources rather than one tool per view. ' +
+            'The first local provider is security; its tree, rows and actions are the same contract the web console renders.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+    },
+    {
+        name: 'read_data',
+        description:
+            'Read one advertised DataProvider resource with one of its declared verbs. Use list_data_resources first. ' +
+            'Tree branch ids and row ids are opaque: pass them back exactly as returned. Reads use this MCP peer\'s Source RPC identity, ' +
+            'and refused peers remain visible as unknown posture rather than being silently omitted.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                provider: { type: 'string', enum: ['security'], description: 'The local provider named by list_data_resources.' },
+                method: { type: 'string', enum: ['getChildren', 'getList', 'getOne', 'getMany', 'getManyReference'] },
+                resource: { type: 'array', items: { type: 'string' }, description: 'The resource path exactly as advertised.' },
+                params: { type: 'object', description: 'The parameters for that DataProvider verb.' }
+            },
+            required: ['provider', 'method', 'resource', 'params'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'invoke_data_action',
+        description:
+            'Invoke an action advertised by a DataProvider row. The row is fetched and validated again immediately before the call. ' +
+            'This adds convenience, never authority: the target sees this MCP peer, applies its ordinary authorize() policy and the AI grant for the declared effect. ' +
+            'Security authority acquisition accepts only 1, 5 or 15 minute leases, offers no takeover, and release can release only this peer\'s own lease.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                provider: { type: 'string', enum: ['security'] },
+                resource: { type: 'array', items: { type: 'string' } },
+                id: { type: 'string', description: 'The opaque row id returned by read_data.' },
+                action: { type: 'string', description: 'The advertised action method.' },
+                args: { type: 'array', items: {}, description: 'Arguments after the row id. acquireAuthority takes one TTL in milliseconds; releaseAuthority takes none.' }
+            },
+            required: ['provider', 'resource', 'id', 'action'],
+            additionalProperties: false
+        }
     },
     {
         name: 'describe_peer',
@@ -915,8 +983,146 @@ export const startMcp = async (options: McpOptions) => {
         return description
     }
 
+    const securityEpoch = randomUUID()
+    let securityRevision = 0
+
+    /**
+     * The Security DataProvider projected from what this MCP identity can establish right now.
+     *
+     * This stays local. Publishing it as an RPC component would make another reader's request leave
+     * under this process's credentials, which is the ambient-authority gateway this view must not
+     * become. A denied description or authorities() call weakens the answer to unknown; it never
+     * removes the peer or turns a refusal into an empty, healthy section.
+     */
+    const securityProvider = async () => {
+        const peers = [...online].sort()
+        const descriptions: Record<string, SecurityDescription | undefined> = {}
+        const refused: Record<string, unknown> = {}
+        const authorities: Record<string, DescribedComponentAuthority[] | undefined> = {}
+        await forEachBounded(peers, 6, async (peer) => {
+            let description: ServerDescription
+            try {
+                description = await describedOf(peer)
+                descriptions[peer] = description
+            } catch {
+                // The projection records only that this observer was refused. Raw errors may carry
+                // policy details or credentials and therefore never enter DataProvider output.
+                refused[peer] = true
+                return
+            }
+            const msgrpc = description.namespaces.find((namespace) => namespace.name === 'msgrpc')
+            if (!msgrpc?.methods.some((method) => method.name === 'authorities')) return
+            try {
+                const remote = await network.proxy<{ authorities(): Promise<DescribedComponentAuthority[]> }>('msgrpc', peer)
+                authorities[peer] = await remote.authorities()
+            } catch {
+                // Unknown, not empty: the caller may see posture and still be forbidden to learn
+                // who holds command authority.
+            }
+        })
+        return new SecurityDataProvider({
+            peers,
+            descriptions,
+            refused,
+            authorities,
+            observerLabel: `MCP persona ${options.name}`,
+            observer: {
+                // This process knows the name it sends. It cannot prove what a remote hub or broker
+                // made of its credential, so that fact remains local/unknown instead of becoming a
+                // self-issued authenticated identity claim.
+                authentication: 'unknown',
+                authenticationEvidence: 'unknown',
+                source: options.name,
+                sourceEvidence: 'local'
+            },
+            epoch: securityEpoch,
+            revision: ++securityRevision
+        })
+    }
+
+    const isSecurityResource = (value: unknown): value is string[] =>
+        Array.isArray(value) && value.length === SECURITY_RESOURCE.path.length && value.every((segment, at) => segment === SECURITY_RESOURCE.path[at])
+
     const callTool = async (name: string, args: { [key: string]: unknown }): Promise<{ text: string; isError?: boolean }> => {
         if (name === 'list_peers') return { text: JSON.stringify({ peers: [...online].sort() }, null, 2) }
+
+        if (name === 'list_data_resources')
+            return {
+                text: JSON.stringify({ providers: [{ provider: 'security', local: true, resources: [SECURITY_RESOURCE] }] }, null, 2)
+            }
+
+        if (name === 'read_data') {
+            if (args.provider !== 'security') return { text: `read_data: '${String(args.provider ?? '')}' is not an advertised provider.`, isError: true }
+            if (!isSecurityResource(args.resource)) return { text: 'read_data: security serves the resource path ["security"].', isError: true }
+            const method = String(args.method ?? '') as RpcDataMethod
+            if (!SECURITY_RESOURCE.verbs.includes(method))
+                return { text: `read_data: security answers ${SECURITY_RESOURCE.verbs.join(', ')}, not ${method || 'an absent method'}.`, isError: true }
+            if (!args.params || typeof args.params !== 'object' || Array.isArray(args.params)) return { text: 'read_data: params must be an object.', isError: true }
+            try {
+                const provider = await securityProvider()
+                const answer = await provider.dataRequest(method, SECURITY_RESOURCE.path, args.params as RpcDataParams)
+                return { text: JSON.stringify({ provider: 'security', resource: SECURITY_RESOURCE.path, method, ...answer }, null, 2) }
+            } catch (e) {
+                return { text: `read_data refused: ${failureText(e)}`, isError: true }
+            }
+        }
+
+        if (name === 'invoke_data_action') {
+            if (args.provider !== 'security') return { text: `invoke_data_action: '${String(args.provider ?? '')}' is not an advertised provider.`, isError: true }
+            if (!isSecurityResource(args.resource)) return { text: 'invoke_data_action: security serves the resource path ["security"].', isError: true }
+            const id = typeof args.id === 'string' ? args.id : ''
+            const action = typeof args.action === 'string' ? args.action : ''
+            const actionArgs = args.args === undefined ? [] : args.args
+            if (!id || !action) return { text: 'invoke_data_action needs an opaque row id and an advertised action.', isError: true }
+            if (!Array.isArray(actionArgs)) return { text: 'invoke_data_action: args must be an array.', isError: true }
+            try {
+                const provider = await securityProvider()
+                const one = await provider.dataRequest('getOne', SECURITY_RESOURCE.path, { id })
+                const row = one.data as SecurityRow | undefined
+                const declared = SECURITY_RESOURCE.actions?.find((candidate) => candidate.method === action && (!candidate.kinds || candidate.kinds.includes(row?.kind ?? '')))
+                if (!row || !declared) return { text: `invoke_data_action: ${action || 'that action'} is not advertised for this current row.`, isError: true }
+                const target = securityAuthorityTargetOf(id)
+                if (!target || row.kind !== 'security.authority' || row.peer !== target.peer || row.namespace !== target.namespace)
+                    return { text: 'invoke_data_action: the row is not a current authority record.', isError: true }
+
+                const remote = await network.proxy<Record<string, (...params: unknown[]) => Promise<unknown>>>(target.namespace, target.peer)
+                let status: 'acquired' | 'released' | 'not-holder'
+                let result: unknown
+                if (action === 'acquireAuthority') {
+                    const ttl = actionArgs[0]
+                    if (actionArgs.length !== 1 || ![60_000, 300_000, 900_000].includes(ttl as number))
+                        return { text: 'invoke_data_action: acquireAuthority takes exactly one bounded TTL: 60000, 300000 or 900000 milliseconds.', isError: true }
+                    result = await remote.$acquire(ttl)
+                    status = 'acquired'
+                } else if (action === 'releaseAuthority') {
+                    if (actionArgs.length) return { text: 'invoke_data_action: releaseAuthority takes no arguments after the row id.', isError: true }
+                    result = await remote.$release()
+                    status = result === 'ok' ? 'released' : 'not-holder'
+                } else return { text: `invoke_data_action: ${action} has no local dispatcher.`, isError: true }
+
+                const introspection = await network.proxy<{ authorities(): Promise<DescribedComponentAuthority[]> }>('msgrpc', target.peer)
+                const refreshed = await introspection.authorities().catch(() => undefined)
+                return {
+                    text: JSON.stringify(
+                        {
+                            provider: 'security',
+                            resource: SECURITY_RESOURCE.path,
+                            id,
+                            action,
+                            peer: target.peer,
+                            namespace: target.namespace,
+                            status,
+                            result,
+                            ...(refreshed ? { authorities: refreshed } : {})
+                        },
+                        null,
+                        2
+                    )
+                }
+            } catch (e) {
+                return { text: `invoke_data_action refused: ${failureText(e)}`, isError: true }
+            }
+        }
 
         if (name === 'describe_peer') {
             const peer = String(args.peer ?? '')
@@ -1636,8 +1842,7 @@ export const startMcp = async (options: McpOptions) => {
     }
 
     let buffered = ''
-    process.stdin.setEncoding('utf8')
-    process.stdin.on('data', (chunk: string) => {
+    const onStdinData = (chunk: string) => {
         buffered += chunk
         // Newline-delimited, and a chunk boundary can fall anywhere, so the tail is kept for next
         // time rather than parsed as a truncated message.
@@ -1661,7 +1866,11 @@ export const startMcp = async (options: McpOptions) => {
                 else process.stderr.write(`source-rpc mcp: ${failureText(e)}\n`)
             })
         }
-    })
+    }
+    if (options.stdio !== false) {
+        process.stdin.setEncoding('utf8')
+        process.stdin.on('data', onStdinData)
+    }
 
     /**
      * The second door: streamable HTTP, spoken directly for the same reason stdio is - the
@@ -1731,7 +1940,7 @@ export const startMcp = async (options: McpOptions) => {
     }
 
     const close = async () => {
-        process.stdin.removeAllListeners('data')
+        if (options.stdio !== false) process.stdin.off('data', onStdinData)
         if (door) await new Promise<void>((resolvePromise) => door!.close(() => resolvePromise()))
         // Before the network goes: a fake left running would hold a link this is about to drop.
         for (const fake of fakes.values()) await fake.close().catch(() => undefined)

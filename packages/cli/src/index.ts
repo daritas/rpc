@@ -50,7 +50,7 @@ const usage = `source-rpc <command> [options]          --version prints the CLI 
   console   browse a live network in a browser: peers, what they expose, calls and events
   broker    run a WebSocket bus: relays between the peers that connect to it, until Ctrl-C
   node      make this machine scriptable from another one, and nothing else, until Ctrl-C
-  run       start console, node and serve roles together from one JSON task file, until Ctrl-C
+  run       start console, MCP, node and serve roles together from one JSON task file, until Ctrl-C
             with no file named it runs ./source-rpc.tasks.json; --init writes one to start from
   mcp       serve the network to an MCP client over stdio: list peers, describe them, call them
             stdio carries the protocol, so it is not for interactive use; --port opens a second
@@ -198,7 +198,7 @@ const usage = `source-rpc <command> [options]          --version prints the CLI 
                                 without stopping the node
 
   run [<file.json>]             defaults to ./source-rpc.tasks.json, in this directory only
-    shared network settings and console, node or serve tasks; relative paths are resolved from the
+    shared network settings and console, MCP, node or serve tasks; relative paths are resolved from the
     task file. Each task's credentials are its own: a key file under 'sign', an auth file under
     'auth', or the same secrets written inline in either. Full format:
     https://source-repo.github.io/rpc/tools/cli#task-files
@@ -1110,6 +1110,7 @@ const runConsole = async (argv: string[]) => {
 
 const taskStartedLine = (task: StartedTask) => {
     if (task.type === 'console') return `${task.id}: console ${task.name} on ${task.url}`
+    if (task.type === 'mcp') return `${task.id}: MCP ${task.name} on ${task.url}`
     if (task.type === 'node') return `${task.id}: node ${task.name}`
     return `${task.id}: serve ${task.name} answering ${task.namespaces?.join(', ')}`
 }
