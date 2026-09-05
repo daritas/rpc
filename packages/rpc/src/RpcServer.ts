@@ -1,8 +1,9 @@
 import { EventEmitter } from 'events'
-import { declaredNamespace } from './RPC/Expose.js'
+import { declaredAuthority, declaredNamespace } from './RPC/Expose.js'
 import type { RpcElevation } from './RPC/Elevation.js'
 import { GenericModule, PeerRegistry, Transport, TransportEvent } from './RPC/Core.js'
 import { ComponentChannels, componentFacade, type RpcComponentChannelOptions, type RpcComponentLike, type RpcComponentOptions, type RpcComponentProxy } from './RPC/ComponentClient.js'
+import { componentAuthority, RpcComponent, type RpcAuthorityChange } from './RPC/Component.js'
 import { HostTopology, type HostTopologyOptions, type RpcRef } from './RPC/Topology.js'
 import { contextEvent, contextNamespace, HostContext, type RpcCapturedContext, type RpcContextProviderHandle, type RpcContextToken } from './RPC/Context.js'
 import { ContextResolver, type RpcContextStore } from './RPC/ContextResolver.js'
@@ -10,7 +11,7 @@ import { RpcOperations } from './RPC/Operations.js'
 import { RpcAuthenticator, RpcAuthorizer, type TrustedCertificateAuthority } from './RPC/Auth.js'
 import { validateAiGrants, type RpcAiGrants } from './RPC/Grants.js'
 import { RpcSchema } from './RPC/Schema.js'
-import { Introspection, surfaceShape, withIntrospection } from './RPC/Introspection.js'
+import { Introspection, surfaceShape, withIntrospection, type RpcOperationalSecurityEvent } from './RPC/Introspection.js'
 import { ExposeOptions, RpcServerHandler } from './RPC/RpcServerHandler.js'
 import type { RpcIdempotencyStore } from './RPC/Idempotency.js'
 import { defaultCallTimeout, RpcClientHandler } from './RPC/RpcClientHandler.js'
@@ -239,6 +240,10 @@ export class RpcServerBase extends EventEmitter implements IManageRpc {
      * are its public surface - so the channels get their own emitter, fed from attach().
      */
     private readonly componentLifecycle = new EventEmitter()
+    /** Feeds the opt-in msgrpc.security event; it stores nothing and carries only closed codes. */
+    private readonly operationalSecurity = new EventEmitter()
+    /** Namespace-owned listeners, so replacing or withdrawing a component cannot leave a ghost. */
+    private readonly authoritySecurity = new Map<string, { instance: RpcComponent<Record<string, unknown>, Record<string, unknown>>; listener: (change: RpcAuthorityChange) => void }>()
     options: RpcServerOptions = { name: '*', transports: [], useMsgPack: true, readyTimeout: 30000 }
     constructor(options: Partial<RpcServerOptions> = {}) {
         super()
@@ -272,7 +277,20 @@ export class RpcServerBase extends EventEmitter implements IManageRpc {
         // unreadable security policy is the failure this exists to prevent, so a malformed
         // document refuses the server rather than quietly granting nothing.
         if (this.options.aiGrants) this.rpc.aiGrants = validateAiGrants(this.options.aiGrants)
-        this.rpc.onAiDecision = this.options.onAiDecision
+        this.rpc.onAiDecision = (record) => {
+            this.operationalSecurity.emit('security', {
+                at: Date.now(),
+                kind: 'ai-access',
+                code: record.allowed ? 'allowed' : 'refused',
+                peer: record.source,
+                namespace: record.path,
+                method: record.method,
+                effect: record.effect,
+                ...(record.grant ? { grant: record.grant } : {}),
+                allowed: record.allowed
+            } satisfies RpcOperationalSecurityEvent)
+            this.options.onAiDecision?.(record)
+        }
         this.rpc.requireIdentity = this.options.requireAuthenticatedPeers ?? !!this.options.authenticate
         // Identity comes from whichever transport the peer is connected to, never from the message
         // itself. Authenticating transports pin a peer name to one connection, so this lookup
@@ -297,7 +315,7 @@ export class RpcServerBase extends EventEmitter implements IManageRpc {
         this.rpc.manageRpc.requireExplicitExposure = this.options.requireExplicitExposure ?? false
         if (this.options.exposeManagement) this.rpc.manageRpc.exposeManagement()
         if (this.options.exposeIntrospection) {
-            this.rpc.manageRpc.exposeClassInstance(new Introspection(this.rpc))
+            this.rpc.manageRpc.exposeClassInstance(new Introspection(this.rpc, this.operationalSecurity))
             // Describing the describer. Without this the one call a peer makes to find out what is
             // here is the only undescribed thing on the server, and 'required' refuses it outright.
             this.rpc.schema = withIntrospection(this.rpc.schema)
@@ -596,6 +614,9 @@ export class RpcServerBase extends EventEmitter implements IManageRpc {
         // Stores are told 'closed' rather than left waiting on a link that is gone; the server at
         // the far end reaps a departed subscriber, so local teardown is all that is owed.
         this.componentChannels?.closeAll()
+        for (const { instance, listener } of this.authoritySecurity.values()) instance.off('authorityChanged', listener)
+        this.authoritySecurity.clear()
+        this.operationalSecurity.removeAllListeners()
         this.caller.failPendingCalls('server closed')
         this.caller.subscriptions.clear()
         await this.caller.close()
@@ -614,14 +635,48 @@ export class RpcServerBase extends EventEmitter implements IManageRpc {
      * job needs to be able to take it down, and until now nothing could.
      */
     exposeClassInstance(instance: object, name?: string, options?: number | ExposeOptions): RpcExposureHandle {
-        this.rpc.manageRpc.exposeClassInstance(instance, name, options)
-        this.announceShape()
         const exposed = name ?? declaredNamespace(instance)?.name
+        this.rpc.manageRpc.exposeClassInstance(instance, name, options)
+        if (exposed) {
+            const previous = this.authoritySecurity.get(exposed)
+            if (previous) previous.instance.off('authorityChanged', previous.listener)
+            this.authoritySecurity.delete(exposed)
+        }
+        this.announceShape()
+        const authorityChanged =
+            exposed && instance instanceof RpcComponent && declaredAuthority(instance).size
+                ? (change: RpcAuthorityChange) => {
+                      const allowed = new Set(['acquired', 'renewed', 'taken', 'released', 'expired'])
+                      if (!allowed.has(change?.reason)) return
+                      const authority = componentAuthority(instance)
+                      this.operationalSecurity.emit('security', {
+                          at: Date.now(),
+                          kind: 'authority-change',
+                          code: change.reason,
+                          namespace: exposed,
+                          ...(authority.holder ? { holder: authority.holder } : {}),
+                          ...(change.previousHolder ? { previousHolder: change.previousHolder } : {}),
+                          ...(authority.expiresAt !== undefined ? { expiresAt: authority.expiresAt } : {}),
+                          generation: authority.generation
+                      } satisfies RpcOperationalSecurityEvent)
+                  }
+                : undefined
+        if (authorityChanged && instance instanceof RpcComponent) {
+            instance.on('authorityChanged', authorityChanged)
+            this.authoritySecurity.set(exposed!, { instance, listener: authorityChanged })
+        }
         return {
             withdraw: async () => {
                 if (!exposed) return false
                 const retired = await this.rpc.retire(exposed)
-                if (retired) this.announceShape()
+                if (retired) {
+                    const attached = this.authoritySecurity.get(exposed)
+                    if (attached) {
+                        attached.instance.off('authorityChanged', attached.listener)
+                        this.authoritySecurity.delete(exposed)
+                    }
+                    this.announceShape()
+                }
                 return retired
             }
         }
@@ -642,16 +697,35 @@ export class RpcServerBase extends EventEmitter implements IManageRpc {
     elevate(elevation: RpcElevation): { lower(): void } {
         const held = { since: Date.now(), ...elevation }
         this.rpc.declaredElevations.push(held)
-        const lower = () => {
+        let timer: NodeJS.Timeout | undefined
+        const lower = (code: 'lowered' | 'expired') => {
             const at = this.rpc.declaredElevations.indexOf(held)
-            if (at >= 0) this.rpc.declaredElevations.splice(at, 1)
+            if (at < 0) return
+            this.rpc.declaredElevations.splice(at, 1)
+            if (timer) clearTimeout(timer)
+            timer = undefined
+            this.announceShape()
+            this.operationalSecurity.emit('security', {
+                at: Date.now(),
+                kind: 'elevation-change',
+                code,
+                capability: held.capability,
+                ...(held.until !== undefined ? { until: held.until } : {})
+            } satisfies RpcOperationalSecurityEvent)
         }
         if (held.until !== undefined) {
-            const timer = setTimeout(lower, Math.max(0, held.until - Date.now()))
+            timer = setTimeout(() => lower('expired'), Math.max(0, held.until - Date.now()))
             timer.unref?.()
         }
         this.announceShape()
-        return { lower }
+        this.operationalSecurity.emit('security', {
+            at: Date.now(),
+            kind: 'elevation-change',
+            code: 'opened',
+            capability: held.capability,
+            ...(held.until !== undefined ? { until: held.until } : {})
+        } satisfies RpcOperationalSecurityEvent)
+        return { lower: () => lower('lowered') }
     }
 
     exposeClass<T>(constructor: new (...args: unknown[]) => T, aliasName?: string): void {

@@ -1,3 +1,5 @@
+import type { DescribedComponentAuthority, RpcTransportDescription } from '@source-repo/rpc'
+
 /** The shapes the console receives from `msgrpc.describe()`, mirrored so the app stays self-contained. */
 
 export type TypeNode =
@@ -26,12 +28,16 @@ export interface DescribedMethod {
     rest?: TypeNode
     returns?: TypeNode
     semantics?: RpcMethodSemantics
+    /** Effect the target says it enforces; absent on older or undescribed surfaces. */
+    effect?: import('@source-repo/rpc').RpcEffect
     /**
      * Which path in the component's state calling this sets, when the method declares it - a field,
      * a dot path, or `*` for a method that takes the path as an argument. This is what the state
      * tree draws its editors from; a method that claims nothing gets none.
      */
     sets?: string
+    /** True when the component authority holder is additionally required. */
+    requiresAuthority?: boolean
 }
 
 export interface DescribedEvent {
@@ -128,6 +134,8 @@ export interface ServerDescription {
     name: string
     version?: string
     validating: boolean
+    /** Stable, secret-free configuration posture; never credentials or live connection state. */
+    transports?: RpcTransportDescription[]
     namespaces: DescribedNamespace[]
     elevated?: DescribedElevation[]
     host?: {
@@ -246,6 +254,12 @@ export interface PeerStructure {
 
 /** What the console's own service offers over msgrpc. */
 export interface ConsoleService {
+    /** The browser-to-console link only; target calls are made by the relaying console. */
+    identity(): Promise<ConsoleLinkIdentity>
+    /** Current authority leases, when the target permits this observer to read them. */
+    authorities(peer: string): Promise<DescribedComponentAuthority[]>
+    /** Bounded operational security diagnostics; not a durable audit log. */
+    securityEvents(): Promise<{ events: SecurityEvent[] }>
     peers(): Promise<{
         peers: string[]
         watching: string[]
@@ -281,6 +295,25 @@ export interface ConsoleService {
     tap(filter?: TapFilter): Promise<{ token: string; sources: string[] }>
     untap(token: string): Promise<{ tapping: boolean; already: boolean }>
     taps(): Promise<{ taps: { token: string; sources: string[] }[]; sources: string[] }>
+}
+
+export interface ConsoleLinkIdentity {
+    authentication: { value: 'authenticated' | 'none'; evidence: 'link' }
+    source: { value: string; evidence: 'link' | 'unknown' }
+    identity?: { name: string; roles?: string[] }
+}
+
+export interface SecurityEvent {
+    id: number
+    at: number
+    kind: 'authentication-failure' | 'signature-failure' | 'transport-rejection' | 'authorization-refused' | 'authority-refused'
+    severity: 'high' | 'medium'
+    evidence: 'link'
+    peer?: string
+    target?: string
+    namespace?: string
+    method?: string
+    code: string
 }
 
 export interface StreamedEvent {

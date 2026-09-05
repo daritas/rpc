@@ -1,5 +1,10 @@
 import EventEmitter from "events";
-import { componentSnapshotEvent, RpcComponent } from "./Component.js";
+import {
+  componentAuthority,
+  componentSnapshotEvent,
+  RpcComponent,
+  type RpcComponentAuthority,
+} from "./Component.js";
 import {
   componentDataResources,
   describedResources,
@@ -183,6 +188,50 @@ export interface ServerDescription {
   types?: { [name: string]: TypeNode };
 }
 
+/** Live arbitration state for one component that actually declares authority-gated methods. */
+export interface DescribedComponentAuthority {
+  namespace: string;
+  methods: string[];
+  authority: RpcComponentAuthority;
+}
+
+/**
+ * A target-side security decision safe to forward to an operational console.
+ *
+ * Codes are closed and raw policy reasons are deliberately absent. Names identify the affected
+ * RPC surface or peer; credentials, claims, parameters and grant-document reasons never enter this
+ * shape. It is live diagnostic evidence, not a durable audit record.
+ */
+export type RpcOperationalSecurityEvent =
+  | {
+      at: number;
+      kind: "ai-access";
+      code: "allowed" | "refused";
+      peer: string;
+      namespace: string;
+      method: string;
+      effect: RpcEffect;
+      grant?: string;
+      allowed: boolean;
+    }
+  | {
+      at: number;
+      kind: "authority-change";
+      code: "acquired" | "renewed" | "taken" | "released" | "expired";
+      namespace: string;
+      holder?: string;
+      previousHolder?: string;
+      expiresAt?: number;
+      generation: number;
+    }
+  | {
+      at: number;
+      kind: "elevation-change";
+      code: "opened" | "lowered" | "expired";
+      capability: string;
+      until?: number;
+    };
+
 /**
  * The schema format has one type map shared by every namespace, so a library adding types to a
  * user's schema has to stay out of their names - a plant defining its own `TypeNode` would
@@ -294,8 +343,21 @@ export const withIntrospection = (schema: RpcSchema | undefined): RpcSchema => {
  * reconnaissance, and on a plant network instance names tend to encode plant structure.
  */
 @rpcNamespace("msgrpc")
-export class Introspection {
-  constructor(private handler: RpcServerHandler) {}
+export class Introspection extends EventEmitter {
+  declare rpcEvents: {
+    /** Bounded target-side decisions; never raw policy errors, claims, credentials or parameters. */
+    security: [event: RpcOperationalSecurityEvent];
+  };
+
+  constructor(
+    private handler: RpcServerHandler,
+    securityEvents?: EventEmitter,
+  ) {
+    super();
+    securityEvents?.on("security", (event: RpcOperationalSecurityEvent) =>
+      this.emit("security", event),
+    );
+  }
 
   /**
    * This host's topology records whole - what a console needs to draw the trees without asking
@@ -379,6 +441,27 @@ export class Introspection {
         ? { since: this.handler.eventTrackedSince(namespace, event) }
         : {}),
     };
+  }
+
+  /**
+   * Current command-authority leases, separate from describe() because these values change without
+   * changing the server's surface. The ordinary msgrpc.authorities authorization check decides who
+   * may read them; no caller can infer a refused peer's holder from a cached description.
+   */
+  @rpc({ semantics: "query" })
+  async authorities(): Promise<DescribedComponentAuthority[]> {
+    return [...this.handler.manageRpc.namespaces]
+      .flatMap(([namespace, held]): DescribedComponentAuthority[] => {
+        if (!(held.instance instanceof RpcComponent) || !held.authority?.size) return [];
+        return [
+          {
+            namespace,
+            methods: [...held.authority].sort(),
+            authority: componentAuthority(held.instance),
+          },
+        ];
+      })
+      .sort((a, b) => a.namespace.localeCompare(b.namespace));
   }
 
   /**

@@ -65,6 +65,103 @@ An authorizer that throws denies the call. Failing open would turn a bug in the 
 
 `requireAuthenticatedPeers` defaults to true when `authenticate` is set, rejecting calls from peers no transport can vouch for with an `Unauthorized` error.
 
+## Describing transport posture without describing secrets
+
+When introspection is enabled, every built-in transport adds a `security` section to its
+`RpcTransportDescription`. It reports four separate facts: authentication, encryption, frame
+signing and relaying. Each carries its evidence as well as its value:
+
+```typescript
+{
+    authentication: { value: 'credentials-presented', evidence: 'peer' },
+    encryption: { value: 'tls-verified', evidence: 'peer' },
+    signing: { value: 'bidirectional', evidence: 'peer' },
+    relay: { value: 'not-applicable', evidence: 'peer' }
+}
+```
+
+The wording is intentionally narrow. A dialling peer can say it **presented** credentials; only the
+listener knows whether it required and accepted them. A listener can say it serves TLS; only a
+dialler can say it verified the certificate. MQTT broker credentials and Source RPC frame signing
+are separate because the first establishes access to a broker while the second establishes a frame's
+Source RPC identity end to end.
+
+These are configuration facts reported by the described peer, so their initial evidence is `peer`.
+A console may add what its own link verified as `link` evidence, but must never silently promote the
+peer's report. `{ evidence: 'unknown' }` and `{ value: 'none', evidence: 'peer' }` are different
+answers.
+
+Only closed posture values travel. Tokens, usernames, passwords, keys, certificates and arbitrary
+transport options do not. Public endpoints have user information, query and fragment stripped
+before they enter `describe()`.
+
+### Console-link identity is not target identity
+
+The web console can ask its own `console.identity()` query what the console server established about
+the browser connection carrying that call. The answer contains only authentication state, the
+routed source, and—when the transport authenticated it—the pinned identity name and roles. It never
+contains authenticator claims, tokens, credentials, or policy details. Each source fact says whether
+it is link evidence or an unverified routed claim.
+
+This does **not** answer whether the browser may call a plant method. Browser calls are relayed: the
+page asks the console process, then that process asks the target peer. The target authorizes the
+console's outbound link identity or source claim, not the browser-link identity displayed by the
+Security workspace. Consequently the method panel can explain the target's declared effect,
+semantics, component-authority requirement, and current elevations, but its access decision remains
+**unknown until call time**. A custom authorizer may also use parameters and private policy that
+introspection must not reveal.
+
+### Operational security visibility
+
+The web console projects security posture through an ordinary tree-shaped DataProvider. Its peer
+branches include transport posture, active elevations, and live component-authority leases; its
+network branches include conservative findings and the console's bounded security-event history.
+Every row retains the evidence vocabulary above, so self-reporting, link verification, local
+inference, and unavailable information never collapse into one trust claim.
+
+`msgrpc.authorities()` returns only components that declare authority-gated methods, together with
+those method names and their current `{ holder?, expiresAt?, generation }`. It is an authorized
+query and intentionally separate from `describe()`: callers denied this query learn no holder, and
+caches cannot turn an expired lease into current posture.
+
+An offline transition clears live authority immediately. Existing component values are retained by
+their own channel as explicitly stale values, not presented as current posture. When the same peer
+name returns, the console invalidates cached descriptions, refusals, and authority before
+re-describing peers it had already used; peers nobody opened remain discovery-only and cost no
+introspection call. The first description is a transport-posture baseline. Later descriptions are
+compared using only the public, secret-free transport contract and produce bounded
+`transport-change` events for added or removed transports and changes to endpoint, authentication,
+encryption, signing, or relay posture. Disconnect alone stays a Presence event.
+
+The console normalizes transport rejections plus relayed `Unauthorized`, `Forbidden`, and
+`NotInControl` outcomes into safe reason codes. It retains 200 entries in memory and streams new
+ones. A peer exposing introspection also publishes a safe `msgrpc.security` event for AI access
+decisions, authority changes and elevation changes. The console subscribes after the peer describes
+that event and rebuilds every received object from an allow-list. Codes are closed; raw authorizer
+errors, AI-grant reasons, claims, credentials and call parameters are absent. These rows retain
+`peer` evidence because the target reported the decision rather than pretending the console
+verified its policy.
+
+The target keeps no event history. `describe()` and `authorities()` answer what is true now; the
+event bridge explains transitions observed after subscription. The console's bounded history is
+useful for diagnosing a running network, but it is neither complete nor durable audit evidence. In
+the Security DataProvider, derived posture rows are explicitly marked `current` and retained event
+rows `history`, so an old transition is not confused with the peer's current state.
+
+Run the cross-layer acceptance fixture with:
+
+```sh
+npm run test:security --workspace @source-repo/rpc-cli
+```
+
+It verifies authenticated Socket.IO roles, the anonymous browser-to-console versus authenticated
+console-to-target boundary, expiring AI grants and elevations, authority contention and expiry,
+identity-name mismatch, reconnect, signed and unsigned MQTT, and absence of token/signing secrets
+from console-facing answers. The web tests additionally pass credential-bearing hostile input
+through the Security DataProvider, generic value renderer, traffic row boundary and JSONL
+serializer. Metadata traffic excludes arguments, results and detailed errors; payload capture is a
+deliberate opt-in and those application values are not claimed to be redacted.
+
 ### The management surface
 
 `manageRpc` is **not exposed by default**. Enabling it publishes exactly one method, `createRpcInstance`, which constructs an instance of a class already passed to `exposeClass()`:
@@ -102,4 +199,3 @@ held.lower()
 **The most important field is `until`, and the most important case is its absence.** An elevation nothing will close is one somebody has to remember to close — the taped-over key, opened for a reason that passed while nobody came back. A viewer draws that as worse than a bounded one rather than the same, and where an `until` is given it is enforced as well as announced, so the announcement cannot outlive the thing.
 
 A lapsed elevation is not announced at all. Posture is what is true now; history belongs in the audit trail.
-

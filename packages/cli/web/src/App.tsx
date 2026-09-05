@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { RpcServer, TransportEvent, type RpcGetListParams, type RpcGetManyParams, type RpcGetOneParams, type RpcGetOneResult, type RpcGetListResult, type RpcGetManyResult, type RpcSchema } from '@source-repo/rpc'
-import { NetworkDataProvider, NetworkRpcDataProvider, NetworkScopeCatalogue, RpcDataCache, rpcOnlineFrom } from '@source-repo/query'
+import { RpcServer, TransportEvent, type DescribedComponentAuthority, type RpcGetListParams, type RpcGetManyParams, type RpcGetOneParams, type RpcGetOneResult, type RpcGetListResult, type RpcGetManyResult, type RpcSchema } from '@source-repo/rpc'
+import { NetworkDataProvider, NetworkRpcDataProvider, NetworkScopeCatalogue, RpcDataCache, SECURITY_RESOURCE, SecurityDataProvider, rpcOnlineFrom } from '@source-repo/query'
 import { RpcOperations } from '@source-repo/rpc'
 import { pageName } from './peerName'
 import { Chat } from './Chat'
@@ -11,11 +11,12 @@ import { ChatMessage, ChatService } from './ChatService'
 import chatContract from './chat.types.json'
 import { ComponentPanel } from './ComponentPanel'
 import { ContextPanel } from './ContextPanel'
-import { asWatch, ConsoleService, holds, DescribedEvent, fetchConsoleName, NetworkProblem, NetworkValueGrid, PeerChange, PeerStructure, ServerDescription, socketPath, StreamedEvent, TappedFrame, typeText, withNode, type NetworkMethodSelection, type Watch, type WatchNode } from '@source-repo/react'
+import { asWatch, ConsoleService, DataProviderValueGrid, holds, DescribedEvent, fetchConsoleName, NetworkProblem, NetworkValueGrid, PeerChange, PeerStructure, ServerDescription, socketPath, StreamedEvent, TappedFrame, typeText, withNode, type ConsoleLinkIdentity, type NetworkMethodSelection, type SecurityEvent, type Watch, type WatchNode } from '@source-repo/react'
 import { throttled } from '@source-repo/search'
 import { MethodPanel } from './MethodPanel'
 import { Operations } from './Operations'
 import { Traffic, TRAFFIC_KEPT } from './Traffic'
+import { downloadJsonLines } from './jsonl'
 import { Problems } from './Problems'
 import { Presence } from './Presence'
 import { displayNameForId, namespaceDisplayName, peerDisplayName } from './displayName'
@@ -73,6 +74,8 @@ const useConsole = () => {
     const [service, setService] = useState<ConsoleService | null>(null)
     const [me, setMe] = useState('')
     const [status, setStatus] = useState('connecting')
+    const [linkIdentity, setLinkIdentity] = useState<ConsoleLinkIdentity | null>(null)
+    const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([])
     const events = useRef<((event: StreamedEvent) => void) | null>(null)
     const peerChange = useRef<((peer: string, state: string, change: PeerChange) => void) | null>(null)
     const said = useRef<((from: string, text: string) => void) | null>(null)
@@ -150,6 +153,8 @@ const useConsole = () => {
 
         const connect = async () => {
             try {
+                setLinkIdentity(null)
+                setSecurityEvents([])
                 // Ask who is serving this page before addressing it: the console's name is its own
                 // name on the network, so it differs between instances.
                 const consoleName = await fetchConsoleName()
@@ -230,12 +235,31 @@ const useConsole = () => {
                 // gap between the two calls.
                 await proxy.on('frame', (frame: unknown) => frames.current?.(frame as TappedFrame))
                 await proxy.on('problem', (problem: unknown) => problems.current?.(problem as NetworkProblem))
+                // Additional in a rolling deployment: an older console may serve the newly built
+                // page briefly, and security visibility must not make the whole console unusable.
+                await proxy
+                    .on('security', (event: unknown) => setSecurityEvents((current) => [event as SecurityEvent, ...current].slice(0, 200)))
+                    .catch(() => undefined)
                 const remote = proxy as ConsoleService
                 // The console does the waiting: it holds the broker link, enforces --timeout, and
                 // its answer says what went wrong. A browser giving up first would replace that
                 // diagnosis with a bare 'Timeout' at almost exactly the same moment.
-                const { callTimeout } = await remote.peers()
+                const [{ callTimeout }, identity, security] = await Promise.all([
+                    remote.peers(),
+                    // A page may be served briefly by an older already-running console after its
+                    // assets were upgraded. Identity is additional posture, not a condition for
+                    // reaching the network, so that rolling-version seam stays explicitly unknown.
+                    remote.identity().catch(() => null),
+                    remote.securityEvents().catch(() => ({ events: [] }))
+                ])
                 if (callTimeout) server.caller.callTimeout = callTimeout + 5000
+                if (identity) setLinkIdentity(identity)
+                // Merge rather than replace: an event can arrive through the subscription after
+                // the history answer was taken but before this callback runs.
+                setSecurityEvents((current) => {
+                    const merged = new Map([...security.events, ...current].map((event) => [event.id, event]))
+                    return [...merged.values()].sort((a, b) => b.id - a.id).slice(0, 200)
+                })
                 setService(remote)
                 setStatus('connected')
             } catch (e) {
@@ -264,21 +288,7 @@ const useConsole = () => {
         }
     }, [])
 
-    return { service, status, me, events, peerChange, said, frames, problems, peer, data, operations, relay }
-}
-
-/**
- * Saves what is on screen as jsonl, which is the shape `msgrpc record` writes and `jq` reads. Built
- * here rather than fetched, so it works on a plant network with no route to anywhere.
- */
-const download = (rows: unknown[], filename: string) => {
-    const blob = new Blob([rows.map((row) => JSON.stringify(row)).join('\n') + '\n'], { type: 'application/x-ndjson' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    link.click()
-    URL.revokeObjectURL(url)
+    return { service, status, me, linkIdentity, securityEvents, events, peerChange, said, frames, problems, peer, data, operations, relay }
 }
 
 /** Just the DataProvider verb, so the page needs no generic over anybody's component class. */
@@ -298,13 +308,13 @@ type DataProxy = {
 }
 
 /** A console-wide destination that owns the main workspace. */
-type Workspace = 'network' | 'traffic' | 'problems' | 'presence' | 'operations'
+type Workspace = 'network' | 'security' | 'traffic' | 'problems' | 'presence' | 'operations'
 
 /** Detail and interaction for the scope selected in the Network workspace. */
 type SideTab = 'actions' | 'chat' | 'events'
 
 export const App = () => {
-    const { service, status, me, events, peerChange, said, frames, problems, peer, data, operations, relay } = useConsole()
+    const { service, status, me, linkIdentity, securityEvents, events, peerChange, said, frames, problems, peer, data, operations, relay } = useConsole()
     const [chats, setChats] = useState<{ [peer: string]: ChatMessage[] }>({})
     /**
      * Messages that have arrived and not been looked at, per peer.
@@ -333,6 +343,8 @@ export const App = () => {
      * has nothing to show for it.
      */
     const [describeRefusals, setDescribeRefusals] = useState<{ readonly [peer: string]: string }>({})
+    /** Live and intentionally short-lived: authority is arbitration state, not description data. */
+    const [authorities, setAuthorities] = useState<Readonly<Record<string, readonly DescribedComponentAuthority[] | undefined>>>({})
     /** Which describes are in flight, so two panes asking at once ask once. A ref: renders must not lose it. */
     const asking = useRef(new Set<string>())
     const [selected, setSelected] = useState<string | null>(null)
@@ -408,6 +420,29 @@ export const App = () => {
     const networkCatalogue = useMemo(() => new NetworkScopeCatalogue(peers, known), [peers, known])
     const networkProvider = useMemo(() => new NetworkDataProvider({ catalogue: networkCatalogue, ask: (question) => data.fetch(question) }), [networkCatalogue, data])
     const networkResource = useMemo(() => new NetworkRpcDataProvider({ provider: networkProvider }), [networkProvider])
+    const securityResource = useMemo(
+        () =>
+            new SecurityDataProvider({
+                peers,
+                descriptions: known,
+                refused: describeRefusals,
+                authorities,
+                events: securityEvents,
+                ...(linkIdentity
+                    ? {
+                          observer: {
+                              authentication: linkIdentity.authentication.value,
+                              authenticationEvidence: linkIdentity.authentication.evidence,
+                              source: linkIdentity.source.value,
+                              sourceEvidence: linkIdentity.source.evidence,
+                              ...(linkIdentity.identity?.name ? { identity: linkIdentity.identity.name } : {}),
+                              ...(linkIdentity.identity?.roles ? { roles: linkIdentity.identity.roles } : {})
+                          }
+                      }
+                    : {})
+            }),
+        [peers, known, describeRefusals, authorities, securityEvents, linkIdentity]
+    )
 
     // The network resource is the console's primary screen, so its structural catalogue is always
     // populated. Descriptions remain bounded by the shared throttler above.
@@ -462,6 +497,39 @@ export const App = () => {
     const [comings, setComings] = useState<PeerChange[]>([])
     const [eventFilter, setEventFilter] = useState('')
     const [eventsPaused, setEventsPaused] = useState(false)
+
+    /**
+     * Authority changes independently of describe(), so read it only while somebody can see it.
+     * Security scopes the whole network; a method form scopes just its target. Refusals remain an
+     * explicit unknown entry and never borrow a stale lease from a previous successful poll.
+     */
+    useEffect(() => {
+        if (!service) return
+        const wanted = workspace === 'security' ? peers : calling ? [calling.peer] : []
+        if (!wanted.length) return
+        let cancelled = false
+        let running = false
+        const refresh = async () => {
+            if (running) return
+            running = true
+            const answers = await throttled(wanted, 6, async (peer) => {
+                try {
+                    return [peer, await service.authorities(peer)] as const
+                } catch {
+                    return [peer, undefined] as const
+                }
+            })
+            running = false
+            if (cancelled) return
+            setAuthorities((current) => ({ ...current, ...Object.fromEntries(answers) }))
+        }
+        void refresh()
+        const timer = window.setInterval(() => void refresh(), 5000)
+        return () => {
+            cancelled = true
+            window.clearInterval(timer)
+        }
+    }, [service, workspace, peers, calling])
 
     const refreshPeers = useCallback(async () => {
         if (!service) return
@@ -520,33 +588,55 @@ export const App = () => {
             setStream((current) => [event, ...current].slice(0, 500))
         }
         peerChange.current = (peer, state, change) => {
+            const forgetPosture = () => {
+                setKnown((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
+                setDescribeRefusals((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
+                setAuthorities((current) => ({ ...current, [peer]: undefined }))
+            }
+            const describeAgain = () => {
+                if (!service) return
+                void service
+                    .describe(peer)
+                    .then((next) => {
+                        if ('error' in next) {
+                            setDescribeRefusals((current) => ({ ...current, [peer]: next.error }))
+                            if (peer === selected) setDescribed(next)
+                            return
+                        }
+                        setKnown((current) => ({ ...current, [peer]: next }))
+                        setDescribeRefusals((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
+                        if (peer === selected) setDescribed(next)
+                    })
+                    .catch((failure) => setDescribeRefusals((current) => ({ ...current, [peer]: (failure as { message?: string }).message ?? String(failure) })))
+            }
             if (state === 'reshaped') {
                 // The peer is still here - its surface changed and the console has dropped what it
                 // cached. Not a coming or a going, so the presence history is left alone; what
                 // matters is that an open panel and the network catalogue stop showing the old
                 // shape without a reselection.
                 void refreshPeers()
-                setKnown((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
-                if (service)
-                    void service
-                        .describe(peer)
-                        .then((next) => {
-                            if ('error' in next) {
-                                setDescribeRefusals((current) => ({ ...current, [peer]: next.error }))
-                                if (peer === selected) setDescribed(next)
-                                return
-                            }
-                            setKnown((current) => ({ ...current, [peer]: next }))
-                            setDescribeRefusals((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== peer)))
-                            if (peer === selected) setDescribed(next)
-                        })
-                        .catch((failure) => setDescribeRefusals((current) => ({ ...current, [peer]: (failure as { message?: string }).message ?? String(failure) })))
+                forgetPosture()
+                describeAgain()
                 return
             }
             setComings((current) => [change, ...current].slice(0, 200))
+            if (state === 'offline') {
+                // A lease and transport posture are claims about now. Keep the component channel's
+                // last values in its own explicitly stale store, but never leave these live facts
+                // looking current while their peer is gone.
+                setAuthorities((current) => ({ ...current, [peer]: undefined }))
+            }
+            if (state === 'online') {
+                // A peer returning under one name may be a new process with a different transport,
+                // authorizer, contract or authority generation. Only re-describe one the page had
+                // already used; discovery itself remains free of a probe per peer.
+                const wasUsed = peer === selected || peer in known || peer in describeRefusals
+                forgetPosture()
+                if (wasUsed) describeAgain()
+            }
             void refreshPeers()
         }
-    }, [service, refreshPeers, events, peerChange, eventsPaused, selected])
+    }, [service, refreshPeers, events, peerChange, eventsPaused, selected, known, describeRefusals])
 
     useEffect(() => {
         // Pausing stops the buffer filling rather than only the list rendering, so a paused tab on a
@@ -721,7 +811,7 @@ export const App = () => {
                     )}
                 </div>
                 <nav className="console-nav" aria-label="console">
-                    {(['network', 'traffic', 'problems', 'presence', 'operations'] as const).map((name) => (
+                    {(['network', 'security', 'traffic', 'problems', 'presence', 'operations'] as const).map((name) => (
                         <button
                             key={name}
                             className={workspace === name ? 'peer selected' : 'peer'}
@@ -776,6 +866,15 @@ export const App = () => {
                             if (method.peer !== selected) void select(method.peer)
                         }}
                     />
+                </div>
+
+                <div className={workspace === 'security' ? 'network-workspace' : 'network-workspace hidden'}>
+                    <header className="peer-head network-head">
+                        <h1>Security</h1>
+                        <span className="muted">reported posture, explicit unknowns and derived findings across the visible network</span>
+                    </header>
+                    {peers.length === 0 && <p className="muted">Waiting for a peer to announce itself…</p>}
+                    <DataProviderValueGrid provider={securityResource} resource={SECURITY_RESOURCE} pageSize={50} />
                 </div>
 
                 {workspace === 'operations' && <Operations operations={operations} />}
@@ -849,6 +948,8 @@ export const App = () => {
                                     network={network}
                                     operations={operations}
                                     relay={relay}
+                                    elevations={callingDescription?.elevated}
+                                    authorities={authorities[calling.peer]}
                                     initiallyOpen
                                 />
                             </section>
@@ -864,7 +965,7 @@ export const App = () => {
                             <h1>Events</h1>
                             <div className="traffic-actions">
                                 {stream.length > 0 && (
-                                    <button className="toggle" onClick={() => download(stream, 'events.jsonl')} title="save what is here as jsonl">
+                                    <button className="toggle" onClick={() => downloadJsonLines(stream, 'events.jsonl')} title="save what is here as jsonl">
                                         export
                                     </button>
                                 )}

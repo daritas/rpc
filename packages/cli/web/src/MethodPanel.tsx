@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { ArgumentField, ConsoleService, DescribedMethod, FieldState, initialText, isOptional, requiredPart, ServerDescription, toValue, typeText, Uncertain, useCommanding } from '@source-repo/react'
-import type { RpcMethodSemantics, RpcOperations } from '@source-repo/rpc'
+import { ArgumentField, ConsoleService, DescribedMethod, FieldState, initialText, isOptional, requiredPart, ServerDescription, toValue, typeText, Uncertain, useCommanding, explainMethodAccess, type DescribedElevation } from '@source-repo/react'
+import type { DescribedComponentAuthority, RpcMethodSemantics, RpcOperations } from '@source-repo/rpc'
 
 /** How many times the repeat button calls. Enough for a p50 to mean something, few enough to wait for. */
 const REPEAT = 20
@@ -103,6 +103,8 @@ export const MethodPanel = ({
     network,
     operations,
     relay,
+    elevations = [],
+    authorities,
     initiallyOpen = false
 }: {
     peer: string
@@ -115,6 +117,10 @@ export const MethodPanel = ({
     operations: RpcOperations
     /** The console relaying it. A relayed command has two places to fail, and they differ. */
     relay: string
+    /** Current peer posture. It never decides whether this caller may invoke the method. */
+    elevations?: readonly DescribedElevation[]
+    /** Live target arbitration, absent when its introspection was unavailable or refused. */
+    authorities?: readonly DescribedComponentAuthority[]
     /** Open immediately when a method row's Call action brought the reader here. */
     initiallyOpen?: boolean
 }) => {
@@ -136,6 +142,8 @@ export const MethodPanel = ({
     const [times, setTimes] = useState<number[]>([])
     const [copied, setCopied] = useState(false)
     const [presets, setPresets] = useState<Preset[]>(() => readPresets(namespace, method.name))
+    const access = explainMethodAccess(method, elevations)
+    const authority = authorities?.find((one) => one.namespace === namespace && one.methods.includes(method.name))
 
     // Written the way the source declares it - `mode?: 'auto' | 'manual'` rather than the `| null`
     // the schema encodes optionality as, which reads like a value the method accepts.
@@ -277,6 +285,49 @@ export const MethodPanel = ({
             </button>
             {open && (
                 <div className="method-body">
+                    <section className="access-explanation" aria-label="Static access explanation">
+                        <div className="access-facts">
+                            <span>
+                                <strong>effect</strong> <code>{access.effect}</code>
+                            </span>
+                            <span>
+                                <strong>behavior</strong> <code>{access.semantics}</code>
+                            </span>
+                            <span>
+                                <strong>component authority</strong> <code>{access.authority}</code>
+                            </span>
+                        </div>
+                        <p>
+                            Access decision: <strong>unknown until call time</strong>. This page asks <code>{relay}</code> to relay the call; the target authorizes that
+                            outbound identity or source claim, not the browser-link identity shown in Security.
+                        </p>
+                        {access.authority === 'required' && authority?.authority.holder && (
+                            <p>
+                                Current authority holder: <code>{authority.authority.holder}</code>
+                                {authority.authority.expiresAt !== undefined && (
+                                    <>
+                                        {' '}
+                                        until <code>{new Date(authority.authority.expiresAt).toLocaleString()}</code>
+                                    </>
+                                )}
+                                {' · '}generation <code>{authority.authority.generation}</code>. This is reported by the target and still does not predict authorization.
+                            </p>
+                        )}
+                        {access.authority === 'required' && authority && !authority.authority.holder && (
+                            <p>
+                                The target reports no current authority holder · generation <code>{authority.authority.generation}</code>.
+                            </p>
+                        )}
+                        {access.authority === 'required' && !authority && (
+                            <p>{authorities === undefined ? 'Live authority state is unavailable or was refused.' : 'The target reported no matching authority lease record.'}</p>
+                        )}
+                        {access.elevations.length > 0 && (
+                            <p>
+                                Target elevations: <code>{access.elevations.map((elevation) => elevation.capability).join(', ')}</code>. These describe power held by the target
+                                and do not grant this call.
+                            </p>
+                        )}
+                    </section>
                     {params.length === 0 && <p className="muted">No arguments.</p>}
                     {params.map((type, index) => (
                         <ArgumentField

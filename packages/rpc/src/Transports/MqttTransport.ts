@@ -1,7 +1,19 @@
 import * as mqtt from 'mqtt'
 
 import { stringToUint8Array, uint8ArrayToBase64 } from 'uint8array-extras'
-import { GenericModule, IGenericModule, Message, MessageHeader, publicTransportEndpoint, TransportEvent, type RelayedFrame, type RpcTransportDescription } from '../RPC/Core.js'
+import {
+    GenericModule,
+    IGenericModule,
+    Message,
+    MessageHeader,
+    publicTransportEndpoint,
+    reportedSecurityFact,
+    TransportEvent,
+    unknownSecurityFact,
+    type RelayedFrame,
+    type RpcTransportDescription,
+    type RpcTransportEncryption
+} from '../RPC/Core.js'
 import { FrameCodec, jsonCodec, msgPackCodec } from '../RPC/Codec.js'
 import type { IPublishPacket } from 'mqtt-packet'
 import { MessageSigner, MessageVerifier, RpcIdentity } from '../RPC/Auth.js'
@@ -347,7 +359,29 @@ export class MqttTransport extends GenericModule<Message, unknown, Message, unkn
 
     rpcDescription(): RpcTransportDescription {
         const endpoint = publicTransportEndpoint(this.url)
-        return { name: this.getName(), protocol: 'mqtt', role: 'broker', ...(endpoint ? { endpoint } : {}) }
+        const encryption = /^(mqtts|wss|ssl|tls):/i.test(this.url)
+            ? reportedSecurityFact(this.mqttOptions.rejectUnauthorized === false ? 'tls-unverified' : 'tls-verified')
+            : /^(mqtt|ws):/i.test(this.url)
+              ? reportedSecurityFact('none')
+              : unknownSecurityFact<RpcTransportEncryption>()
+        const credentialsPresented = ['username', 'password', 'cert', 'key', 'pfx'].some(
+            (field) => this.mqttOptions[field as keyof mqtt.IClientOptions] !== undefined
+        )
+        const signing = this.sign && this.verify ? 'bidirectional' : this.sign ? 'outgoing' : this.verify ? 'incoming-required' : 'none'
+        return {
+            name: this.getName(),
+            protocol: 'mqtt',
+            role: 'broker',
+            ...(endpoint ? { endpoint } : {}),
+            security: {
+                // Broker credentials are presented, not vouched for by this peer. Frame signatures
+                // are separate because they establish a Source RPC identity end to end.
+                authentication: reportedSecurityFact(credentialsPresented ? 'credentials-presented' : 'none'),
+                encryption,
+                signing: reportedSecurityFact(signing),
+                relay: reportedSecurityFact('not-applicable')
+            }
+        }
     }
 
     /**

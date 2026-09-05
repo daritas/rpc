@@ -70,6 +70,88 @@
         }
       }
     },
+    "ConsoleLinkIdentity": {
+      "kind": "object",
+      "fields": {
+        "authentication": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "authenticated"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    }
+                  ]
+                }
+              },
+              "evidence": {
+                "type": {
+                  "kind": "literal",
+                  "value": "link"
+                }
+              }
+            }
+          }
+        },
+        "source": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "evidence": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "link"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "unknown"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "identity": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "name": {
+                "type": {
+                  "kind": "string"
+                }
+              },
+              "roles": {
+                "type": {
+                  "kind": "array",
+                  "items": {
+                    "kind": "string"
+                  }
+                },
+                "optional": true
+              }
+            }
+          },
+          "optional": true
+        }
+      }
+    },
     "NetworkProblem": {
       "kind": "object",
       "fields": {
@@ -107,6 +189,203 @@
           "optional": true
         }
       }
+    },
+    "SecurityEvent": {
+      "kind": "object",
+      "fields": {
+        "id": {
+          "type": {
+            "kind": "number"
+          }
+        },
+        "at": {
+          "type": {
+            "kind": "number"
+          }
+        },
+        "kind": {
+          "type": {
+            "kind": "ref",
+            "name": "SecurityEventKind"
+          }
+        },
+        "severity": {
+          "type": {
+            "kind": "union",
+            "options": [
+              {
+                "kind": "literal",
+                "value": "high"
+              },
+              {
+                "kind": "literal",
+                "value": "medium"
+              },
+              {
+                "kind": "literal",
+                "value": "low"
+              }
+            ]
+          }
+        },
+        "evidence": {
+          "type": {
+            "kind": "union",
+            "options": [
+              {
+                "kind": "literal",
+                "value": "link"
+              },
+              {
+                "kind": "literal",
+                "value": "peer"
+              }
+            ]
+          }
+        },
+        "peer": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "target": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "namespace": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "method": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "effect": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "grant": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "allowed": {
+          "type": {
+            "kind": "boolean"
+          },
+          "optional": true
+        },
+        "capability": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "holder": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "previousHolder": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "expiresAt": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "generation": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "until": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "transport": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "previous": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "current": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "code": {
+          "type": {
+            "kind": "string"
+          }
+        }
+      }
+    },
+    "SecurityEventKind": {
+      "kind": "union",
+      "options": [
+        {
+          "kind": "literal",
+          "value": "authentication-failure"
+        },
+        {
+          "kind": "literal",
+          "value": "signature-failure"
+        },
+        {
+          "kind": "literal",
+          "value": "transport-rejection"
+        },
+        {
+          "kind": "literal",
+          "value": "authorization-refused"
+        },
+        {
+          "kind": "literal",
+          "value": "authority-refused"
+        },
+        {
+          "kind": "literal",
+          "value": "ai-access"
+        },
+        {
+          "kind": "literal",
+          "value": "authority-change"
+        },
+        {
+          "kind": "literal",
+          "value": "elevation-change"
+        },
+        {
+          "kind": "literal",
+          "value": "transport-change"
+        }
+      ]
     },
     "PeerChange": {
       "kind": "object",
@@ -304,8 +583,189 @@
             "kind": "string"
           },
           "optional": true
+        },
+        "security": {
+          "type": {
+            "kind": "ref",
+            "name": "RpcTransportSecurityDescription"
+          },
+          "optional": true
         }
       }
+    },
+    "RpcTransportSecurityDescription": {
+      "kind": "object",
+      "fields": {
+        "authentication": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "connection"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "credentials-presented"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        },
+        "encryption": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "local"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "tls"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "tls-verified"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "tls-unverified"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        },
+        "signing": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "bidirectional"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "outgoing"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "incoming-required"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        },
+        "relay": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "enabled"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "disabled"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "conditional"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "not-applicable"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "RpcSecurityEvidence": {
+      "kind": "union",
+      "options": [
+        {
+          "kind": "literal",
+          "value": "link"
+        },
+        {
+          "kind": "literal",
+          "value": "unknown"
+        },
+        {
+          "kind": "literal",
+          "value": "peer"
+        },
+        {
+          "kind": "literal",
+          "value": "local"
+        }
+      ]
     },
     "DescribedNamespace": {
       "kind": "object",
@@ -2712,6 +3172,52 @@
         }
       }
     },
+    "DescribedComponentAuthority": {
+      "kind": "object",
+      "fields": {
+        "namespace": {
+          "type": {
+            "kind": "string"
+          }
+        },
+        "methods": {
+          "type": {
+            "kind": "array",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        "authority": {
+          "type": {
+            "kind": "ref",
+            "name": "RpcComponentAuthority"
+          }
+        }
+      }
+    },
+    "RpcComponentAuthority": {
+      "kind": "object",
+      "fields": {
+        "holder": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "expiresAt": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "generation": {
+          "type": {
+            "kind": "number"
+          }
+        }
+      }
+    },
     "TapFilter": {
       "kind": "object",
       "fields": {
@@ -2980,6 +3486,14 @@
             }
           }
         },
+        "identity": {
+          "params": [],
+          "returns": {
+            "kind": "ref",
+            "name": "ConsoleLinkIdentity"
+          },
+          "semantics": "query"
+        },
         "problems": {
           "params": [],
           "returns": {
@@ -2996,6 +3510,24 @@
               }
             }
           }
+        },
+        "securityEvents": {
+          "params": [],
+          "returns": {
+            "kind": "object",
+            "fields": {
+              "events": {
+                "type": {
+                  "kind": "array",
+                  "items": {
+                    "kind": "ref",
+                    "name": "SecurityEvent"
+                  }
+                }
+              }
+            }
+          },
+          "semantics": "query"
         },
         "presence": {
           "params": [],
@@ -3048,6 +3580,24 @@
               }
             ]
           }
+        },
+        "authorities": {
+          "params": [
+            {
+              "kind": "string"
+            }
+          ],
+          "paramNames": [
+            "peer"
+          ],
+          "returns": {
+            "kind": "array",
+            "items": {
+              "kind": "ref",
+              "name": "DescribedComponentAuthority"
+            }
+          },
+          "semantics": "query"
         },
         "call": {
           "params": [
@@ -3295,6 +3845,14 @@
             {
               "kind": "ref",
               "name": "NetworkProblem"
+            }
+          ]
+        },
+        "security": {
+          "params": [
+            {
+              "kind": "ref",
+              "name": "SecurityEvent"
             }
           ]
         }

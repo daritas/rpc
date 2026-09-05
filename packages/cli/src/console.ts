@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { extname, join, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { EventEmitter } from 'events'
-import { MqttTransport, RpcServer, SCHEMA_VERSION, TransportEvent, rpc, rpcNamespace, type RelayedFrame, type RpcInvocationHandle, type RpcSchema, type ServerDescription } from '@source-repo/rpc'
+import { MqttTransport, RpcServer, SCHEMA_VERSION, TransportEvent, rpc, rpcNamespace, type DescribedComponentAuthority, type RelayedFrame, type RpcInvocationHandle, type RpcSchema, type RpcTransportDescription, type ServerDescription } from '@source-repo/rpc'
 import { networkTransports, type NetworkOptions } from './network.js'
 import { BusService, DEFAULT_TAP_TTL, type TapFilter, type TappedFrame } from './bus.js'
 // The tap's own contract, merged with the console's below: one server, and a schema has to describe
@@ -133,6 +133,55 @@ export interface ConsoleTap {
 }
 
 /**
+ * What the console server can establish about the browser connection carrying this call.
+ *
+ * Claims are deliberately absent. They are authenticator-specific and may contain credentials or
+ * policy internals; the open console needs only the pinned name and roles a person can interpret.
+ */
+export interface ConsoleLinkIdentity {
+    authentication: { value: 'authenticated' | 'none'; evidence: 'link' }
+    source: { value: string; evidence: 'link' | 'unknown' }
+    identity?: { name: string; roles?: string[] }
+}
+
+export type SecurityEventKind =
+    | 'authentication-failure'
+    | 'signature-failure'
+    | 'transport-rejection'
+    | 'authorization-refused'
+    | 'authority-refused'
+    | 'ai-access'
+    | 'authority-change'
+    | 'elevation-change'
+    | 'transport-change'
+
+/** Bounded operational evidence, deliberately not a durable audit record. */
+export interface SecurityEvent {
+    id: number
+    at: number
+    kind: SecurityEventKind
+    severity: 'high' | 'medium' | 'low'
+    evidence: 'link' | 'peer'
+    peer?: string
+    target?: string
+    namespace?: string
+    method?: string
+    effect?: string
+    grant?: string
+    allowed?: boolean
+    capability?: string
+    holder?: string
+    previousHolder?: string
+    expiresAt?: number
+    generation?: number
+    until?: number
+    transport?: string
+    previous?: string
+    current?: string
+    code: string
+}
+
+/**
  * A frame a transport refused or could not deliver, a name two peers claimed, or a link that
  * failed - the four things that otherwise reach a caller only as an unexplained timeout.
  *
@@ -156,6 +205,55 @@ export interface NetworkProblem {
 /** How much history the console keeps. These arrive unasked, so the buffers are bounded. */
 const PROBLEM_HISTORY = 200
 
+const securityKindOf = (reason: string | undefined): SecurityEventKind => {
+    const text = reason?.toLowerCase() ?? ''
+    if (text.includes('signature') || text.includes('unsigned') || text.includes('replay')) return 'signature-failure'
+    if (text.includes('authentic') || text.includes('credential') || text.includes('identity') || text.includes('claimed')) return 'authentication-failure'
+    return 'transport-rejection'
+}
+
+const operationalCodes = {
+    'ai-access': new Set(['allowed', 'refused']),
+    'authority-change': new Set(['acquired', 'renewed', 'taken', 'released', 'expired']),
+    'elevation-change': new Set(['opened', 'lowered', 'expired'])
+} as const
+
+const safeEventString = (value: unknown): string | undefined => (typeof value === 'string' && value.length <= 256 ? value : undefined)
+const safeEventNumber = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
+
+type TransportPosture = { label: string; fields: Readonly<Record<string, string>> }
+
+/** Stable, secret-free comparison input made only from RpcTransportDescription's public fields. */
+const transportPostureOf = (transports: readonly RpcTransportDescription[] | undefined): ReadonlyMap<string, TransportPosture> | undefined => {
+    if (transports === undefined) return undefined
+    const duplicates = new Map<string, number>()
+    const rows = [...transports]
+        .sort((a, b) => `${a.name}\0${a.protocol}\0${a.role}\0${a.endpoint ?? ''}`.localeCompare(`${b.name}\0${b.protocol}\0${b.role}\0${b.endpoint ?? ''}`))
+        .map((transport) => {
+            const base = `${transport.name}\0${transport.protocol}\0${transport.role}`
+            const duplicate = duplicates.get(base) ?? 0
+            duplicates.set(base, duplicate + 1)
+            const fact = (name: keyof NonNullable<RpcTransportDescription['security']>) => {
+                const held = transport.security?.[name]
+                return `${held?.value ?? 'unknown'} (${held?.evidence ?? 'unknown'})`
+            }
+            return [
+                `${base}\0${duplicate}`,
+                {
+                    label: `${transport.protocol} ${transport.role} ${transport.name}`,
+                    fields: {
+                        endpoint: transport.endpoint ?? 'unknown',
+                        authentication: fact('authentication'),
+                        encryption: fact('encryption'),
+                        signing: fact('signing'),
+                        relay: fact('relay')
+                    }
+                }
+            ] as const
+        })
+    return new Map(rows)
+}
+
 /**
  * What a description says the peer is. A broker exposes the tap and nothing else; a console has its
  * own namespace; a page hosts the chat service the console app ships. Anything else answering for
@@ -176,13 +274,14 @@ export class ConsoleService extends EventEmitter {
     /**
      * Declared rather than inferred from emit() calls, which cannot be read statically. Without
      * this the console's own contract described its methods and none of its events, so a console
-     * pointed at another one saw an empty events list on a service that has three.
+     * pointed at another one saw an empty events list on a service that has several.
      */
     declare rpcEvents: {
         event: [event: StreamedEvent]
         peer: [change: PeerChange]
         frame: [frame: TappedFrame]
         problem: [problem: NetworkProblem]
+        security: [event: SecurityEvent]
     }
 
     /**
@@ -225,6 +324,12 @@ export class ConsoleService extends EventEmitter {
 
     /** What has gone wrong on the links, newest first and bounded. */
     private readonly seen: NetworkProblem[] = []
+    private readonly securitySeen: SecurityEvent[] = []
+    /** One safe msgrpc.security subscription per described peer. */
+    private readonly securityForwarding = new Map<string, (...args: unknown[]) => void>()
+    /** Last described public transport posture, retained across an offline/online replacement. */
+    private readonly transportPosture = new Map<string, ReadonlyMap<string, TransportPosture> | undefined>()
+    private securityCounter = 0
 
     /**
      * Peers arriving and leaving, newest first and bounded.
@@ -267,6 +372,136 @@ export class ConsoleService extends EventEmitter {
         this.emit('problem', problem)
     }
 
+    noteSecurity(event: Omit<SecurityEvent, 'id'>) {
+        const recorded = { ...event, id: ++this.securityCounter }
+        this.securitySeen.unshift(recorded)
+        if (this.securitySeen.length > PROBLEM_HISTORY) this.securitySeen.length = PROBLEM_HISTORY
+        this.emit('security', recorded)
+    }
+
+    /**
+     * Rebuild a peer-reported event from its closed vocabulary. Never spread a remote object: an
+     * older or hostile peer may attach raw policy errors, claims or credentials to it.
+     */
+    private noteRemoteSecurity(target: string, value: unknown) {
+        if (!value || typeof value !== 'object') return
+        const from = value as Record<string, unknown>
+        const kind = safeEventString(from.kind) as keyof typeof operationalCodes | undefined
+        const code = safeEventString(from.code)
+        if (!kind || !Object.hasOwn(operationalCodes, kind) || !code || !operationalCodes[kind].has(code as never)) return
+        const until = safeEventNumber(from.until)
+        const severity: SecurityEvent['severity'] =
+            kind === 'elevation-change' && code === 'opened' && until === undefined
+                ? 'high'
+                : (kind === 'elevation-change' && code === 'opened') ||
+                    (kind === 'authority-change' && code === 'taken') ||
+                    (kind === 'ai-access' && code === 'refused')
+                  ? 'medium'
+                  : 'low'
+        const strings = Object.fromEntries(
+            ['peer', 'namespace', 'method', 'effect', 'grant', 'capability', 'holder', 'previousHolder'].flatMap((field) => {
+                const held = safeEventString(from[field])
+                return held === undefined ? [] : [[field, held]]
+            })
+        )
+        const numbers = Object.fromEntries(
+            ['expiresAt', 'generation', 'until'].flatMap((field) => {
+                const held = safeEventNumber(from[field])
+                return held === undefined ? [] : [[field, held]]
+            })
+        )
+        this.noteSecurity({
+            at: Date.now(),
+            kind,
+            severity,
+            evidence: 'peer',
+            target,
+            ...strings,
+            ...numbers,
+            ...(typeof from.allowed === 'boolean' ? { allowed: from.allowed } : {}),
+            code
+        })
+    }
+
+    private async followSecurity(peer: string, proxy: { on(event: string, handler: (...args: unknown[]) => void): Promise<unknown> }) {
+        if (this.securityForwarding.has(peer)) return
+        const handler = (event: unknown) => this.noteRemoteSecurity(peer, event)
+        this.securityForwarding.set(peer, handler)
+        try {
+            await proxy.on('security', handler)
+        } catch (failure) {
+            this.securityForwarding.delete(peer)
+            throw failure
+        }
+    }
+
+    /** A departed process took its remote subscription with it; a replacement gets a fresh one. */
+    forgetSecurity(peer: string) {
+        this.securityForwarding.delete(peer)
+    }
+
+    /**
+     * Compare descriptions only after they were requested for another reason. Presence alone still
+     * costs no introspection call, and the first observation establishes a baseline rather than
+     * pretending something changed before this console existed.
+     */
+    private noteTransportPosture(peer: string, transports: readonly RpcTransportDescription[] | undefined) {
+        const current = transportPostureOf(transports)
+        if (!this.transportPosture.has(peer)) {
+            this.transportPosture.set(peer, current)
+            return
+        }
+        const previous = this.transportPosture.get(peer)
+        this.transportPosture.set(peer, current)
+        if (previous === undefined || current === undefined) {
+            if (previous !== current)
+                this.noteSecurity({
+                    at: Date.now(),
+                    kind: 'transport-change',
+                    severity: 'medium',
+                    evidence: 'peer',
+                    target: peer,
+                    code: 'reporting-changed',
+                    previous: previous === undefined ? 'unavailable' : 'reported',
+                    current: current === undefined ? 'unavailable' : 'reported'
+                })
+            return
+        }
+        for (const key of new Set([...previous.keys(), ...current.keys()])) {
+            const before = previous.get(key)
+            const after = current.get(key)
+            const transport = safeEventString(after?.label ?? before?.label)
+            if (!before || !after) {
+                this.noteSecurity({
+                    at: Date.now(),
+                    kind: 'transport-change',
+                    severity: 'medium',
+                    evidence: 'peer',
+                    target: peer,
+                    ...(transport ? { transport } : {}),
+                    code: before ? 'transport-removed' : 'transport-added'
+                })
+                continue
+            }
+            for (const field of ['endpoint', 'authentication', 'encryption', 'signing', 'relay'] as const) {
+                if (before.fields[field] === after.fields[field]) continue
+                const was = safeEventString(before.fields[field])
+                const now = safeEventString(after.fields[field])
+                this.noteSecurity({
+                    at: Date.now(),
+                    kind: 'transport-change',
+                    severity: 'medium',
+                    evidence: 'peer',
+                    target: peer,
+                    ...(transport ? { transport } : {}),
+                    ...(was ? { previous: was } : {}),
+                    ...(now ? { current: now } : {}),
+                    code: `${field}-changed`
+                })
+            }
+        }
+    }
+
     /** Console-side token -> the taps it opened, here and on other peers, and when they lapse. */
     private readonly held = new Map<string, { expires: number; owner: string; opened: { peer: string; token: string }[] }>()
     /** Peers whose `frame` event this console has already subscribed to, so it subscribes once. */
@@ -307,6 +542,24 @@ export class ConsoleService extends EventEmitter {
         }
     }
 
+    /** Who this call is on the browser-to-console link; never a claim about a target peer's link. */
+    @rpc({ semantics: 'query', injectInvocation: true })
+    async identity(invocation: RpcInvocationHandle): Promise<ConsoleLinkIdentity> {
+        const { source, identity } = invocation.context
+        return {
+            authentication: { value: identity ? 'authenticated' : 'none', evidence: 'link' },
+            source: { value: source, evidence: identity ? 'link' : 'unknown' },
+            ...(identity
+                ? {
+                      identity: {
+                          name: identity.name,
+                          ...(identity.roles ? { roles: [...identity.roles] } : {})
+                      }
+                  }
+                : {})
+        }
+    }
+
     /**
      * What has gone wrong on the links, newest first.
      *
@@ -316,6 +569,11 @@ export class ConsoleService extends EventEmitter {
     @rpc
     async problems(): Promise<{ problems: NetworkProblem[] }> {
         return { problems: [...this.seen] }
+    }
+
+    @rpc({ semantics: 'query' })
+    async securityEvents(): Promise<{ events: SecurityEvent[] }> {
+        return { events: [...this.securitySeen] }
     }
 
     /**
@@ -330,8 +588,12 @@ export class ConsoleService extends EventEmitter {
     @rpc
     async describe(peer: string): Promise<ServerDescription | { error: string; code?: string }> {
         try {
-            const proxy = await this.reach(peer).proxy<{ describe: () => Promise<ServerDescription> }>('msgrpc', peer)
+            const proxy = await this.reach(peer).proxy<{
+                describe: () => Promise<ServerDescription>
+                on(event: string, handler: (...args: unknown[]) => void): Promise<unknown>
+            }>('msgrpc', peer)
             const description = await proxy.describe()
+            this.noteTransportPosture(peer, description.transports)
             // Every description teaches what the peer is, whoever asked for it and why.
             this.roles.set(peer, roleFrom(description))
             if (description.host)
@@ -341,12 +603,21 @@ export class ConsoleService extends EventEmitter {
                     ...(description.host.place ? { place: description.host.place } : {}),
                     ...(description.host.label !== undefined ? { label: description.host.label } : {})
                 })
+            if (description.namespaces.find((namespace) => namespace.name === 'msgrpc')?.events.some((event) => event.name === 'security'))
+                await this.followSecurity(peer, proxy).catch(() => undefined)
             return description
         } catch (e) {
             const failure = asFailure(e)
             if (failure.code === 'ClassNotFound') this.roles.set(peer, 'undescribed')
             return failure
         }
+    }
+
+    /** Live arbitration is queried separately from the cached structural description. */
+    @rpc({ semantics: 'query' })
+    async authorities(peer: string): Promise<DescribedComponentAuthority[]> {
+        const proxy = await this.reach(peer).proxy<{ authorities: () => Promise<DescribedComponentAuthority[]> }>('msgrpc', peer)
+        return await proxy.authorities()
     }
 
     @rpc
@@ -374,7 +645,19 @@ export class ConsoleService extends EventEmitter {
         } catch (e) {
             // Reported rather than thrown: an RpcError's code is the useful part, and it would be
             // flattened into a generic exception on its way back to the browser.
-            return { ...asFailure(e), ms: Date.now() - started }
+            const failure = asFailure(e)
+            if (failure.code === 'Unauthorized' || failure.code === 'Forbidden' || failure.code === 'NotInControl')
+                this.noteSecurity({
+                    at: Date.now(),
+                    kind: failure.code === 'NotInControl' ? 'authority-refused' : 'authorization-refused',
+                    severity: failure.code === 'Unauthorized' ? 'high' : 'medium',
+                    evidence: 'link',
+                    peer,
+                    namespace,
+                    method,
+                    code: failure.code
+                })
+            return { ...failure, ms: Date.now() - started }
         }
     }
 
@@ -562,6 +845,15 @@ export class ConsoleService extends EventEmitter {
             const [peer, namespace, event] = key.split('/')
             await this.unwatch(peer, namespace, event).catch(() => undefined)
         }
+        for (const [peer, handler] of this.securityForwarding) {
+            try {
+                const proxy = await this.reach(peer).proxy<{ off(event: string, handler: (...args: unknown[]) => void): Promise<unknown> }>('msgrpc', peer)
+                await proxy.off('security', handler)
+            } catch {
+                // Gone, which removed its server-side subscription already.
+            }
+        }
+        this.securityForwarding.clear()
     }
 }
 
@@ -779,6 +1071,7 @@ export const startConsole = async (options: ConsoleOptions) => {
         transport.on(TransportEvent.peerGone, (peer: string) => {
             // Asked again if it returns: a broker restarted with a tap is a different answer.
             service.forgetBus(peer)
+            service.forgetSecurity(peer)
             // Whatever it was watching goes with it, rather than waiting out a ttl on a broker.
             void service.releaseTapsFor(peer)
             service.links.delete(peer)
@@ -789,9 +1082,18 @@ export const startConsole = async (options: ConsoleOptions) => {
         // they cover every way a call disappears without an answer: refused before the RPC layer,
         // undeliverable, answered to whichever connection claimed the name last, or a link that
         // failed underneath.
-        transport.on(TransportEvent.rejected, (report: { source?: string; reason?: string }) =>
+        transport.on(TransportEvent.rejected, (report: { source?: string; reason?: string }) => {
             service.noteProblem({ at: Date.now(), kind: 'rejected', link, ...(report?.source ? { peer: report.source } : {}), ...(report?.reason ? { reason: report.reason } : {}) })
-        )
+            const kind = securityKindOf(report?.reason)
+            service.noteSecurity({
+                at: Date.now(),
+                kind,
+                severity: kind === 'transport-rejection' ? 'medium' : 'high',
+                evidence: 'link',
+                ...(report?.source ? { peer: report.source } : {}),
+                code: kind
+            })
+        })
         transport.on(TransportEvent.unroutable, (report: { source?: string; target?: string; reason?: string }) =>
             service.noteProblem({
                 at: Date.now(),

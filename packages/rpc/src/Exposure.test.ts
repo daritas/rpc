@@ -235,10 +235,29 @@ test('a peer that can do something dangerous says so, and says it loudest when n
     await server.ready()
 
     const client = new RpcClient('http://localhost:3944', { name: peer('asker3944'), defaultTarget: peer('elev3944') })
-    const described = await (await client.proxy<Introspection>('msgrpc')).describe()
+    const introspection = await client.proxy<Introspection & { on(event: string, handler: (report: unknown) => void): Promise<unknown> }>('msgrpc')
+    const changes: { kind: string; code: string; capability: string }[] = []
+    let receivedBoth!: () => void
+    const bothChanges = new Promise<void>((resolve) => (receivedBoth = resolve))
+    await introspection.on('security', (report) => {
+        changes.push(report as (typeof changes)[number])
+        if (changes.length === 2) receivedBoth()
+    })
+    const described = await introspection.describe()
 
     t.deepEqual(described.transports, [
-        { name: peer('elev3944'), protocol: 'socket.io', role: 'listen', endpoint: 'http://127.0.0.1:3944' }
+        {
+            name: peer('elev3944'),
+            protocol: 'socket.io',
+            role: 'listen',
+            endpoint: 'http://127.0.0.1:3944',
+            security: {
+                authentication: { value: 'none', evidence: 'peer' },
+                encryption: { value: 'none', evidence: 'peer' },
+                signing: { value: 'none', evidence: 'peer' },
+                relay: { value: 'enabled', evidence: 'peer' }
+            }
+        }
     ])
 
     // Gathered from what is exposed rather than from what somebody remembered to declare, which is
@@ -256,8 +275,16 @@ test('a peer that can do something dangerous says so, and says it loudest when n
     t.truthy(withBoth.elevated?.find((one) => one.capability === 'debug.endpoint')?.since, 'stamped when it opened, so how long it has been open is answerable')
 
     held.lower()
-    const lowered = await (await client.proxy<Introspection>('msgrpc')).describe()
+    const lowered = await introspection.describe()
     t.is(lowered.elevated?.length, 1, 'and lowering it stops the announcement')
+    await bothChanges
+    t.deepEqual(
+        changes.map(({ kind, code, capability }) => ({ kind, code, capability })),
+        [
+            { kind: 'elevation-change', code: 'opened', capability: 'debug.endpoint' },
+            { kind: 'elevation-change', code: 'lowered', capability: 'debug.endpoint' }
+        ]
+    )
 
     await client.close()
     await server.close()

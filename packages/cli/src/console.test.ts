@@ -2,8 +2,8 @@ import anyTest, { TestFn } from 'ava'
 import { randomUUID } from 'crypto'
 import { EventEmitter } from 'events'
 import { connectAsync } from 'mqtt'
-import { rpc, rpcNamespace, RpcClient, RpcSchema, RpcServer, type ServerDescription, type TypeNode } from '@source-repo/rpc'
-import { consoleIdentityPath, startConsole, type ConsoleService } from './console.js'
+import { rpc, rpcNamespace, RpcClient, RpcSchema, RpcServer, type RpcInvocationHandle, type ServerDescription, type TypeNode } from '@source-repo/rpc'
+import { ConsoleService as ConsoleServiceImplementation, consoleIdentityPath, startConsole, type ConsoleService } from './console.js'
 
 const BROKER_URL = process.env.MSGRPC_TEST_BROKER ?? 'mqtt://localhost:1883'
 
@@ -88,6 +88,53 @@ const browserClient = async (url: string) => {
     const proxy = await client.proxy<ConsoleService & { on: (event: string, handler: (...args: unknown[]) => void) => Promise<unknown> }>('console')
     return { client, remote: proxy }
 }
+
+test('console link identity publishes the pinned name and roles but never authenticator claims', async (t) => {
+    const service = new ConsoleServiceImplementation(new Set(), 1000)
+    const roles = ['operator']
+    const invocation = {
+        context: {
+            requestId: 'request',
+            source: 'page',
+            identity: { name: 'anders', roles, claims: { token: 'never publish this' } }
+        }
+    } as unknown as RpcInvocationHandle
+    const answer = await service.identity(invocation)
+    roles.push('admin')
+    t.deepEqual(answer, {
+        authentication: { value: 'authenticated', evidence: 'link' },
+        source: { value: 'page', evidence: 'link' },
+        identity: { name: 'anders', roles: ['operator'] }
+    })
+    t.false(JSON.stringify(answer).includes('never publish this'))
+
+    const anonymous = await service.identity({ context: { requestId: 'anonymous', source: 'claim-only' } } as unknown as RpcInvocationHandle)
+    t.deepEqual(anonymous, {
+        authentication: { value: 'none', evidence: 'link' },
+        source: { value: 'claim-only', evidence: 'unknown' }
+    })
+})
+
+test('operational security events are bounded and contain only safe reason codes', async (t) => {
+    const service = new ConsoleServiceImplementation(new Set(), 1000)
+    for (let at = 1; at <= 205; at++)
+        service.noteSecurity({
+            at,
+            kind: 'authorization-refused',
+            severity: 'medium',
+            evidence: 'link',
+            peer: 'line',
+            namespace: 'control',
+            method: 'start',
+            code: 'Forbidden'
+        })
+
+    const { events } = await service.securityEvents()
+    t.is(events.length, 200)
+    t.is(events[0].at, 205)
+    t.is(events[199].at, 6)
+    t.false(JSON.stringify(events).includes('reason'))
+})
 
 test('the console discovers a peer, describes it, calls it and streams its events over Source RPC', async (t) => {
     if (t.context.skipped) {
@@ -180,6 +227,12 @@ test('the console watches a socket.io network, with no broker anywhere', async (
 
     const running = await startConsole({ hub: 'http://localhost:3990', port: 7393, host: '127.0.0.1', name: peer('console-hub'), callTimeout: 5000 })
     const { client, remote } = await browserClient(running.url)
+
+    const linkIdentity = await remote.identity()
+    t.deepEqual(linkIdentity.authentication, { value: 'none', evidence: 'link' })
+    t.is(linkIdentity.source.evidence, 'unknown')
+    t.truthy(linkIdentity.source.value)
+    t.is(linkIdentity.identity, undefined)
 
     const peers = await pollUntil(
         async () => (await remote.peers()).peers,

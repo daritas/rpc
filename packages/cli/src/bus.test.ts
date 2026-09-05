@@ -108,6 +108,12 @@ test('a tap started while the broker runs sees a call it was not part of, and pa
         t.is(typeof reply.ms, 'number')
         t.true(reply.ms! >= 0 && reply.ms! < 5000)
         t.is(reply.source, device, 'a reply travels back from the device')
+
+        await t.throwsAsync(boiler.fault())
+        await waitFor(() => frames.some((frame) => frame.kind === 'ERROR'))
+        const failure = frames.find((frame) => frame.kind === 'ERROR')!
+        t.is(failure.code, 'Exception')
+        t.is(failure.error, undefined, 'detailed errors are payload and stay out of a metadata tap')
     })
 })
 

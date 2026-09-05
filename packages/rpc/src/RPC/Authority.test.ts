@@ -183,6 +183,37 @@ test('a takeover moves the generation, and the displaced holder is refused there
     await dispose()
 })
 
+test('authorized introspection reports live leases only for authority-gated components', async (t) => {
+    const server = new RpcServer({ name: peer('authority3877'), transports: [{ port: 3877 }], exposeIntrospection: true })
+    await server.ready()
+    const unit = new Unit()
+    server.exposeClassInstance(unit)
+    const client = new RpcClient('http://localhost:3877', { name: peer('operator3877'), defaultTarget: peer('authority3877') })
+    await client.ready()
+    const changes: { kind: string; code: string; namespace?: string; holder?: string }[] = []
+    const introspection = await client.proxy<{
+        authorities(): Promise<{ namespace: string; methods: string[]; authority: { holder?: string; expiresAt?: number; generation: number } }[]>
+        on(event: string, handler: (change: unknown) => void): Promise<unknown>
+    }>('msgrpc')
+    await introspection.on('security', (change) => changes.push(change as (typeof changes)[number]))
+    const remote = await client.component<Unit>('unit')
+    const held = await remote.$acquire(60000)
+    await waitFor(() => changes.length > 0)
+
+    t.deepEqual(await introspection.authorities(), [
+        {
+            namespace: 'unit',
+            methods: ['setMode', 'start'],
+            authority: held
+        }
+    ])
+    t.like(changes[0], { kind: 'authority-change', code: 'acquired', namespace: 'unit', holder: peer('operator3877') })
+
+    await remote[rpcComponent].close()
+    await client.close()
+    await server.close()
+})
+
 test('requiresAuthority on a class that is not a component is refused at expose time', async (t) => {
     class Plain {
         @rpc({ requiresAuthority: true })

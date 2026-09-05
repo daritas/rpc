@@ -196,6 +196,52 @@
         }
       }
     },
+    "DescribedComponentAuthority": {
+      "kind": "object",
+      "fields": {
+        "namespace": {
+          "type": {
+            "kind": "string"
+          }
+        },
+        "methods": {
+          "type": {
+            "kind": "array",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        "authority": {
+          "type": {
+            "kind": "ref",
+            "name": "RpcComponentAuthority"
+          }
+        }
+      }
+    },
+    "RpcComponentAuthority": {
+      "kind": "object",
+      "fields": {
+        "holder": {
+          "type": {
+            "kind": "string"
+          },
+          "optional": true
+        },
+        "expiresAt": {
+          "type": {
+            "kind": "number"
+          },
+          "optional": true
+        },
+        "generation": {
+          "type": {
+            "kind": "number"
+          }
+        }
+      }
+    },
     "ServerDescription": {
       "kind": "object",
       "fields": {
@@ -366,8 +412,189 @@
             "kind": "string"
           },
           "optional": true
+        },
+        "security": {
+          "type": {
+            "kind": "ref",
+            "name": "RpcTransportSecurityDescription"
+          },
+          "optional": true
         }
       }
+    },
+    "RpcTransportSecurityDescription": {
+      "kind": "object",
+      "fields": {
+        "authentication": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "connection"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "credentials-presented"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        },
+        "encryption": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "local"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "tls"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "tls-verified"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "tls-unverified"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        },
+        "signing": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "none"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "bidirectional"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "outgoing"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "incoming-required"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        },
+        "relay": {
+          "type": {
+            "kind": "object",
+            "fields": {
+              "value": {
+                "type": {
+                  "kind": "union",
+                  "options": [
+                    {
+                      "kind": "literal",
+                      "value": "enabled"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "disabled"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "conditional"
+                    },
+                    {
+                      "kind": "literal",
+                      "value": "not-applicable"
+                    }
+                  ]
+                },
+                "optional": true
+              },
+              "evidence": {
+                "type": {
+                  "kind": "ref",
+                  "name": "RpcSecurityEvidence"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "RpcSecurityEvidence": {
+      "kind": "union",
+      "options": [
+        {
+          "kind": "literal",
+          "value": "link"
+        },
+        {
+          "kind": "literal",
+          "value": "peer"
+        },
+        {
+          "kind": "literal",
+          "value": "local"
+        },
+        {
+          "kind": "literal",
+          "value": "unknown"
+        }
+      ]
     },
     "DescribedNamespace": {
       "kind": "object",
@@ -2714,6 +2941,212 @@
           "optional": true
         }
       }
+    },
+    "RpcOperationalSecurityEvent": {
+      "kind": "union",
+      "options": [
+        {
+          "kind": "object",
+          "fields": {
+            "at": {
+              "type": {
+                "kind": "number"
+              }
+            },
+            "kind": {
+              "type": {
+                "kind": "literal",
+                "value": "ai-access"
+              }
+            },
+            "code": {
+              "type": {
+                "kind": "union",
+                "options": [
+                  {
+                    "kind": "literal",
+                    "value": "allowed"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "refused"
+                  }
+                ]
+              }
+            },
+            "peer": {
+              "type": {
+                "kind": "string"
+              }
+            },
+            "namespace": {
+              "type": {
+                "kind": "string"
+              }
+            },
+            "method": {
+              "type": {
+                "kind": "string"
+              }
+            },
+            "effect": {
+              "type": {
+                "kind": "ref",
+                "name": "RpcEffect"
+              }
+            },
+            "grant": {
+              "type": {
+                "kind": "string"
+              },
+              "optional": true
+            },
+            "allowed": {
+              "type": {
+                "kind": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "kind": "object",
+          "fields": {
+            "at": {
+              "type": {
+                "kind": "number"
+              }
+            },
+            "kind": {
+              "type": {
+                "kind": "literal",
+                "value": "authority-change"
+              }
+            },
+            "code": {
+              "type": {
+                "kind": "union",
+                "options": [
+                  {
+                    "kind": "literal",
+                    "value": "acquired"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "renewed"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "taken"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "released"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "expired"
+                  }
+                ]
+              }
+            },
+            "namespace": {
+              "type": {
+                "kind": "string"
+              }
+            },
+            "holder": {
+              "type": {
+                "kind": "string"
+              },
+              "optional": true
+            },
+            "previousHolder": {
+              "type": {
+                "kind": "string"
+              },
+              "optional": true
+            },
+            "expiresAt": {
+              "type": {
+                "kind": "number"
+              },
+              "optional": true
+            },
+            "generation": {
+              "type": {
+                "kind": "number"
+              }
+            }
+          }
+        },
+        {
+          "kind": "object",
+          "fields": {
+            "at": {
+              "type": {
+                "kind": "number"
+              }
+            },
+            "kind": {
+              "type": {
+                "kind": "literal",
+                "value": "elevation-change"
+              }
+            },
+            "code": {
+              "type": {
+                "kind": "union",
+                "options": [
+                  {
+                    "kind": "literal",
+                    "value": "expired"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "opened"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "lowered"
+                  }
+                ]
+              }
+            },
+            "capability": {
+              "type": {
+                "kind": "string"
+              }
+            },
+            "until": {
+              "type": {
+                "kind": "number"
+              },
+              "optional": true
+            }
+          }
+        }
+      ]
+    },
+    "RpcEffect": {
+      "kind": "union",
+      "options": [
+        {
+          "kind": "literal",
+          "value": "observe"
+        },
+        {
+          "kind": "literal",
+          "value": "operate"
+        },
+        {
+          "kind": "literal",
+          "value": "program"
+        },
+        {
+          "kind": "literal",
+          "value": "security-admin"
+        }
+      ]
     }
   },
   "namespaces": {
@@ -2822,6 +3255,17 @@
           },
           "semantics": "query"
         },
+        "authorities": {
+          "params": [],
+          "returns": {
+            "kind": "array",
+            "items": {
+              "kind": "ref",
+              "name": "DescribedComponentAuthority"
+            }
+          },
+          "semantics": "query"
+        },
         "describe": {
           "params": [],
           "returns": {
@@ -2829,6 +3273,16 @@
             "name": "ServerDescription"
           },
           "semantics": "query"
+        }
+      },
+      "events": {
+        "security": {
+          "params": [
+            {
+              "kind": "ref",
+              "name": "RpcOperationalSecurityEvent"
+            }
+          ]
         }
       }
     }

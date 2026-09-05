@@ -232,7 +232,7 @@ The chat contract is the one that has to survive a bundler. `@rpc` and `@rpcName
 
 ### Watching events
 
-**Watch all** takes every event in a namespace in one click, which is the usual first move on an unfamiliar peer. The events pane has a filter, a pause and an **export** that saves what is on screen as jsonl — the same shape `source-rpc record` writes and `jq` reads. Pausing stops the buffer filling rather than only the list rendering, so a paused pane on a busy network stays as it was.
+**Watch all** takes every event in a namespace in one click, which is the usual first move on an unfamiliar peer. The events pane has a filter, a pause and an **export** that saves what is on screen as jsonl — the same shape `source-rpc record` writes and `jq` reads. Event arguments are application data and are exported verbatim, so an event stream should be handled as sensitively as the application it observes. Pausing stops the buffer filling rather than only the list rendering, so a paused pane on a busy network stays as it was.
 
 Arguments worth keeping get a **save** button. Presets are stored in the browser and keyed by namespace and method rather than by peer, so a set saved against one cell is offered on the next — the reason to save a setpoint sequence usually being that five more cabinets are coming. They are named by what they hold, so there is nothing to type.
 
@@ -287,6 +287,68 @@ HMAC only. For Ed25519 or an HSM, build the console with the library's `startCon
 **`--prefix` is MQTT's.** A socket.io hub has no topic namespace, so the flag does nothing for `--hub`. Watching two MQTT networks at once is not possible either; it is one broker and one hub.
 
 **Give it its own name on a busy network.** The default is unique per process, but a peer name maps to an MQTT client id and a broker allows one connection per id, so two consoles sharing a `--name` will disconnect each other.
+
+## Security
+
+**Security** is a top-level workspace, beside Network and the diagnostic workspaces. It uses the
+same scope-tree/value-grid as the rest of the console rather than a privileged security UI: the
+resource has branches for the current console link, findings, bounded events, and peers. Each peer
+then scopes its transports, elevations, and component authorities. Filtering by peer, category,
+evidence level, or finding uses the ordinary DataProvider path.
+
+Every displayed fact carries evidence. `link` means this console's transport established it;
+`peer` means the target reported it; `local` is a console-side inference; and `unknown` remains
+unknown. In particular, a peer reporting `tls-verified` is not silently promoted to something this
+console verified. There is deliberately no aggregate green “secure” badge.
+
+The **Current console link** row answers only who the browser is on its connection to this console.
+Calls from a method form have a second leg: the browser asks the console, and the console calls the
+target under the console's outbound identity. The method panel says so and shows the method's
+declared effect, retry semantics, authority requirement, current target elevations, and—when the
+target permits it—the live authority holder, expiry, and generation. Authorization remains unknown
+until call time because a target authorizer may depend on arguments or private policy.
+
+Authority is queried separately from `describe()`. Descriptions are structural and cacheable;
+leases change without changing a contract. A peer built before `msgrpc.authorities`, or one that
+refuses it, therefore shows authority as unknown rather than retaining an old holder. See
+[Command authority](../guide/authority.md#visible-to-everyone) for the target-side rules.
+
+Going offline immediately clears that peer's live authority claim. Component values already
+observed follow the component channel's different rule: they remain readable and are marked stale,
+because “last saw 80 °C before the link failed” is useful while “80 °C now” is false. If the peer
+returns under the same name, cached posture and refusals are discarded and a peer the page had
+already used is described again. This catches a restarted process whose authentication, transport,
+contract, or authority generation changed without turning initial discovery into one probe per
+peer. The first description establishes a baseline. A later description that changes a transport's
+endpoint, authentication, encryption, signing, or relay posture—or adds or removes a transport—adds
+a `transport-change` event. An ordinary disconnect remains Presence history, not a security alarm.
+
+The console also keeps the newest 200 security diagnostics. These include transport rejections,
+authorization or authority refusals made through the console relay, and target-reported AI access,
+authority-lease and elevation changes. A described target that publishes `msgrpc.security` is
+subscribed once; older targets remain posture-only. The subscription passes through the target's
+ordinary `authorize` rule, so refusing it reveals no event stream.
+
+Rows contain bounded reason codes and addresses—not raw policy errors, grant reasons, credentials,
+keys, token claims or method arguments—and distinguish link evidence from a peer's report. They are
+available both live as `console.security` and as the `console.securityEvents()` history. Targets
+keep no history for this bridge, so current posture comes from `describe()` and `authorities()`;
+events describe what the console observed after subscribing or between descriptions. Security rows
+label that distinction directly: derived identity, posture, findings, elevations and authorities
+are `current`, while retained transition rows are `history`. History is not presented as current
+posture. This is an operational debugging buffer, not a complete or tamper-evident audit log.
+
+The executable acceptance fixture covers an anonymous browser link, authenticated viewer/operator/
+engineer/AI identities, name impersonation, the effect ladder, an expiring AI grant and elevation,
+authority contention and expiry, reconnect, signed MQTT, an unsigned MQTT rejection, and secret
+redaction from every browser-facing answer:
+
+```sh
+npm run test:security --workspace @source-repo/rpc-cli
+```
+
+It uses isolated Socket.IO ports and a unique MQTT prefix. The MQTT half skips when no broker is
+available; CI sets `SOURCE_RPC_REQUIRE_BROKER` so that half cannot disappear from a green CI run.
 
 ## Presence
 
@@ -366,10 +428,16 @@ Frames arrive as the `frame` event, so anything that can subscribe to an msgrpc 
 | `peer` | only frames this peer sent or received — "mirror that device" |
 | `namespace` | only this namespace; applies to replies too, since a reply is paired with its call first |
 | `kinds` | any of `POST`, `SUCCESS`, `ERROR`, `EVENT` |
-| `payloads` | include arguments, results and event payloads. **Off by default** |
+| `payloads` | include arguments, results, event payloads and detailed error messages. **Off by default** |
 | `ttl` | seconds before the tap drops itself. Default 300, maximum 3600 |
 
-Payloads are off by default because the metadata is what a debugging session usually needs, and a plant bus carries values nobody meant to hand to whoever happened to be tapping. Several taps can run at once with different filters; each frame names the taps it matched, and payloads are carried only if one of them asked.
+Payloads are off by default because the metadata is what a debugging session usually needs, and a plant bus carries values nobody meant to hand to whoever happened to be tapping. Detailed error text is payload too: an application can put parameters, paths or an upstream response in an error. A metadata tap keeps the bounded RPC error code and removes that text. Several taps can run at once with different filters; each frame names the taps it matched, and payloads are carried only if one of them asked.
+
+The web Traffic workspace follows the same default and can export its filtered rows as jsonl. Its
+browser boundary rebuilds each row from the declared traffic fields, so a metadata-only capture
+cannot acquire extra transport fields on its way to the DOM or export. Enabling **arguments and
+results** is an explicit disclosure choice: captured application payloads and detailed errors are
+then displayed and exported verbatim.
 
 Taps expire on their own, because a console that closes without untapping would otherwise leave the broker building and emitting frames for a subscriber that is not there.
 

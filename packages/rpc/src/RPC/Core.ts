@@ -208,7 +208,44 @@ export interface RpcTransportDescription {
     role: 'listen' | 'connect' | 'broker' | 'port' | 'custom'
     /** Public network endpoint with credentials, query and fragment removed. */
     endpoint?: string
+    /** Safe, configuration-level posture reported by this peer. Never credentials or live identity. */
+    security?: RpcTransportSecurityDescription
 }
+
+/** Where the observer's confidence in one security fact comes from. */
+export type RpcSecurityEvidence = 'link' | 'peer' | 'local' | 'unknown'
+
+/** One security value with provenance kept beside it rather than collapsed into a badge. */
+export interface RpcSecurityFact<T extends string = string> {
+    readonly value?: T
+    readonly evidence: RpcSecurityEvidence
+}
+
+export type RpcTransportAuthentication = 'connection' | 'credentials-presented' | 'none'
+export type RpcTransportEncryption = 'tls' | 'tls-verified' | 'tls-unverified' | 'none' | 'local'
+export type RpcTransportSigning = 'bidirectional' | 'outgoing' | 'incoming-required' | 'none'
+export type RpcTransportRelay = 'enabled' | 'disabled' | 'conditional' | 'not-applicable'
+
+/**
+ * Stable security configuration a transport can reveal without publishing secrets.
+ *
+ * A transport description comes from the peer it describes, so built-in transports mark these
+ * facts `peer`. An observer may later add facts verified by its own link, but must not replace the
+ * reported evidence with that stronger claim. An absent value with `unknown` evidence is different
+ * from a peer explicitly reporting `none`.
+ */
+export interface RpcTransportSecurityDescription {
+    readonly authentication: RpcSecurityFact<RpcTransportAuthentication>
+    readonly encryption: RpcSecurityFact<RpcTransportEncryption>
+    readonly signing: RpcSecurityFact<RpcTransportSigning>
+    readonly relay: RpcSecurityFact<RpcTransportRelay>
+}
+
+/** Mark a safe enum as configuration reported by the described peer. */
+export const reportedSecurityFact = <T extends string>(value: T): RpcSecurityFact<T> => ({ value, evidence: 'peer' })
+
+/** State that a fact cannot be established from the surface being described. */
+export const unknownSecurityFact = <T extends string>(): RpcSecurityFact<T> => ({ evidence: 'unknown' })
 
 /** Strip the parts of a connection URL that commonly carry credentials or tokens. */
 export const publicTransportEndpoint = (endpoint: string): string | undefined => {
