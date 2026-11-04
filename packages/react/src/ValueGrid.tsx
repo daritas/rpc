@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { RpcFilter, RpcSort } from '@source-repo/rpc'
 import type { RpcDataCache, RpcQuestion } from '@source-repo/query'
-import { columnsFor, declaredResourceAt } from './scope.js'
+import { columnsFor, declaredResourceAt, typedRowFields } from './scope.js'
 import { rowReadMethod } from './row-preview.js'
 import { BranchTable, ResourceTree, type BranchQuestion, type RowQuestion, type ScopedQuestion } from './ResourceTree.js'
 import { RecordPanel } from './RecordPanel.js'
@@ -169,6 +169,24 @@ export const ValueGrid = ({
     // The resource's own judgement first, then its row type - so a table that declared no columns
     // still draws its fields rather than a lone id.
     const columns = columnsFor(tree, types)
+    /**
+     * The row shapes, where the resource declares more than one.
+     *
+     * Memoised for its identity rather than for its cost: the table recomputes its layout when this
+     * changes, and a fresh object every render would rebuild the whole heading on every tick of a
+     * one-second period.
+     */
+    const typedColumns = useMemo(() => {
+        const declared = typedRowFields(tree, types)
+        if (!declared) return undefined
+        return {
+            types: declared.types,
+            typeOf: (row: unknown) => {
+                const named = row && typeof row === 'object' ? (row as Record<string, unknown>)[declared.discriminator] : undefined
+                return typeof named === 'string' ? named : undefined
+            }
+        }
+    }, [tree, types])
     const representation = tree?.presentation?.representation
 
     // A tree is the whole pane when one is selected. There is nothing else under that scope node -
@@ -234,6 +252,7 @@ export const ValueGrid = ({
                         <BranchTable
                                 resource={tree.path}
                                 columns={columns}
+                                typedColumns={typedColumns}
                                 representation={representation}
                                 parentId={branch}
                                 cache={cache}

@@ -371,3 +371,60 @@ test('filtering, sorting, paging and row preview use the DataProvider contract',
     t.deepEqual((one as { data: unknown }).data, answer.data[0])
     t.deepEqual(list(provider, 'not-a-branch').data, [], 'an invalid scope cannot accidentally reveal the whole resource')
 })
+
+/**
+ * The declaration and the rows, checked against each other.
+ *
+ * `shapeFields` says what each `kind` carries and the union under `row` is built from it, so those
+ * two cannot drift. What can drift is the third thing: what the constructors above actually put on
+ * a row. A field that appears on a row and in no shape draws in no column - it is invisible rather
+ * than wrong, which is the failure that would never be reported. So this asks the provider for one
+ * of everything and holds the answer against the claim.
+ */
+const declaredShapes = (): Map<string, Set<string>> => {
+    const row = SECURITY_RESOURCE.row
+    if (row?.kind !== 'union') throw new Error('the security row is no longer a union')
+    return new Map(
+        row.options.map((option) => {
+            if (option.kind !== 'object') throw new Error('a security row shape is not an object')
+            const marked = option.fields.kind?.type
+            if (marked?.kind !== 'literal' || typeof marked.value !== 'string') throw new Error('a security row shape has no literal kind')
+            return [marked.value, new Set(Object.keys(option.fields))]
+        })
+    )
+}
+
+test('every field a row carries is a field its shape declares', (t) => {
+    const provider = new SecurityDataProvider({
+        peers: ['alpha', 'beta', 'lost'],
+        descriptions: {
+            // beta is described but its authority was never read, which is the only way to an
+            // authority-unknown row.
+            beta: described({ name: 'beta' }),
+            alpha: described({
+                validating: false,
+                transports: [
+                    { name: 'mqtt', protocol: 'mqtt', role: 'connect', endpoint: 'mqtt://example.test/path', security: undefined },
+                    { name: 'ws', protocol: 'websocket', role: 'listen' }
+                ],
+                elevated: [{ capability: 'debug.shell', reason: 'maintenance', since: 1000 }, { capability: 'admin.all' }]
+            })
+        },
+        authorities: {
+            alpha: [{ namespace: 'line', methods: ['start'], authority: { holder: 'console', expiresAt: 10000, generation: 4 } }]
+        },
+        observer: { authentication: 'authenticated', authenticationEvidence: 'link', source: 'page-7', sourceEvidence: 'link', identity: 'anders', roles: ['operator'] },
+        events: [{ id: 7, at: 9000, kind: 'authorization-refused', severity: 'medium', evidence: 'link', peer: 'alpha', code: 'refused', namespace: 'line', method: 'start' }]
+    })
+
+    const rows = rowsOf(list(provider))
+    const shapes = declaredShapes()
+    // The fixture has to reach every shape, or this passes by never asking.
+    t.deepEqual([...new Set(rows.map((row) => row.kind))].sort(), [...shapes.keys()].sort())
+
+    for (const row of rows) {
+        const declared = shapes.get(row.kind)!
+        const undeclared = Object.keys(row).filter((name) => !declared.has(name))
+        t.deepEqual(undeclared, [], `${row.kind} carries ${undeclared.join(', ')}`)
+    }
+})

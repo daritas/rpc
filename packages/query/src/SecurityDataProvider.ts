@@ -241,51 +241,89 @@ export interface SecurityDescription {
     readonly elevated?: readonly RpcElevation[]
 }
 
+const str = { type: { kind: 'string' } } as const
+const optional = { type: { kind: 'string' }, optional: true } as const
+const strings = { type: { kind: 'array', items: { kind: 'string' } }, optional: true } as const
+const moment = { type: { kind: 'number' }, optional: true } as const
+const counter = { type: { kind: 'number', integer: true }, optional: true } as const
+const flag = { type: { kind: 'boolean' }, optional: true } as const
+
+/** What every security row carries, whichever shape it is. */
+const commonFields = { name: str, category: str, peer: str, evidence: str, timeframe: str } as const
+
+/**
+ * What each shape carries beyond the common five.
+ *
+ * One list per `kind`, and the union below is built from it rather than written beside it, so the
+ * two cannot drift. `satisfies` is what makes the keys a claim: a shape nobody produces, or a
+ * `kind` left out when one is added, stops the build here rather than becoming a column that is
+ * blank on every row.
+ *
+ * The reason to say this at all is that a viewer can now use it. A row type this wide had to be one
+ * flat object with thirty optional fields while nothing could read anything better, and the cost
+ * was a table whose columns were the union of seven shapes - fifteen promoted, of which a transport
+ * row fills eight and a peer row three. `TypeNode` could express the union the whole time; there
+ * was just nothing on the other end to ask. See `notes/typed-columns.md`.
+ */
+const shapeFields = {
+    'security.identity': { authentication: optional, authenticationEvidence: optional, source: optional, sourceEvidence: optional, identity: optional, roles: strings },
+    'security.peer': { validating: flag },
+    'security.transport': {
+        transport: str,
+        protocol: str,
+        role: str,
+        endpoint: optional,
+        authentication: optional,
+        authenticationEvidence: optional,
+        encryption: optional,
+        encryptionEvidence: optional,
+        signing: optional,
+        signingEvidence: optional,
+        relay: optional,
+        relayEvidence: optional
+    },
+    'security.elevation': { capability: str, reason: optional, since: moment, until: moment, grantedBy: optional },
+    'security.authority': { namespace: optional, methods: strings, generation: counter, holder: optional, expiresAt: moment, message: optional },
+    'security.authority-unknown': { message: str },
+    'security.event': {
+        severity: str,
+        event: str,
+        at: { type: { kind: 'number' } },
+        code: str,
+        target: optional,
+        namespace: optional,
+        method: optional,
+        effect: optional,
+        grant: optional,
+        allowed: flag,
+        capability: optional,
+        holder: optional,
+        previousHolder: optional,
+        expiresAt: moment,
+        generation: counter,
+        until: moment,
+        transport: optional,
+        previous: optional,
+        current: optional
+    },
+    'security.finding': { severity: str, finding: str, message: str, transport: optional, protocol: optional, role: optional, endpoint: optional, capability: optional }
+} as const satisfies Record<SecurityRow['kind'], Readonly<Record<string, unknown>>>
+
 const securityResource: RpcDataResource = {
     path: SECURITY_RESOURCE_PATH,
     verbs: ['getChildren', 'getList', 'getOne'],
     shape: 'tree',
     label: 'Security',
+    // Eight shapes rather than one object with thirty optional fields. `additional` stays true: it
+    // was true before, the rows are assembled by spreading, and tightening a claim about what may
+    // arrive is a different change from saying what usually does.
     row: {
-        kind: 'object',
-        fields: {
-            name: { type: { kind: 'string' } },
-            kind: { type: { kind: 'string' } },
-            category: { type: { kind: 'string' } },
-            peer: { type: { kind: 'string' } },
-            severity: { type: { kind: 'string' }, optional: true },
-            finding: { type: { kind: 'string' }, optional: true },
-            message: { type: { kind: 'string' }, optional: true },
-            transport: { type: { kind: 'string' }, optional: true },
-            protocol: { type: { kind: 'string' }, optional: true },
-            authentication: { type: { kind: 'string' }, optional: true },
-            encryption: { type: { kind: 'string' }, optional: true },
-            signing: { type: { kind: 'string' }, optional: true },
-            relay: { type: { kind: 'string' }, optional: true },
-            evidence: { type: { kind: 'string' } },
-            capability: { type: { kind: 'string' }, optional: true },
-            identity: { type: { kind: 'string' }, optional: true },
-            roles: { type: { kind: 'array', items: { kind: 'string' } }, optional: true },
-            source: { type: { kind: 'string' }, optional: true },
-            namespace: { type: { kind: 'string' }, optional: true },
-            holder: { type: { kind: 'string' }, optional: true },
-            expiresAt: { type: { kind: 'number' }, optional: true },
-            generation: { type: { kind: 'number', integer: true }, optional: true },
-            methods: { type: { kind: 'array', items: { kind: 'string' } }, optional: true },
-            event: { type: { kind: 'string' }, optional: true },
-            at: { type: { kind: 'number' }, optional: true },
-            code: { type: { kind: 'string' }, optional: true },
-            method: { type: { kind: 'string' }, optional: true },
-            target: { type: { kind: 'string' }, optional: true },
-            effect: { type: { kind: 'string' }, optional: true },
-            grant: { type: { kind: 'string' }, optional: true },
-            allowed: { type: { kind: 'boolean' }, optional: true },
-            previousHolder: { type: { kind: 'string' }, optional: true },
-            timeframe: { type: { kind: 'string' }, optional: true },
-            previous: { type: { kind: 'string' }, optional: true },
-            current: { type: { kind: 'string' }, optional: true }
-        },
-        additional: true
+        kind: 'union',
+        options: Object.entries(shapeFields).map(([kind, fields]) => ({
+            kind: 'object' as const,
+            fields: { kind: { type: { kind: 'literal' as const, value: kind } }, ...commonFields, ...fields },
+            additional: true
+        }))
     },
     presentation: {
         defaultColumns: ['timeframe', 'severity', 'finding', 'event', 'peer', 'target', 'namespace', 'holder', 'transport', 'authentication', 'encryption', 'signing', 'relay', 'evidence', 'message'],

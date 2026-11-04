@@ -6,6 +6,7 @@ import type { Ref } from './ObjectPanel.js'
 import type { DescribedAction, DescribedResource } from './types.js'
 import { pageControls } from './paging.js'
 import { actionsOn } from './scope.js'
+import { cellsFor, typedColumnLayout, type TypedCell, type TypedFields } from './typed-columns.js'
 import { Pager } from './Pager.js'
 import { compileFilter } from './filter.js'
 import { useDebounced } from './timing.js'
@@ -455,7 +456,9 @@ export const BranchTable = ({
     actions,
     onAction,
     onMove,
-    onEdit
+    onEdit,
+    typedColumns,
+    glyphs = true
 }: {
     resource: readonly string[]
     columns: readonly string[]
@@ -512,6 +515,32 @@ export const BranchTable = ({
      * no tree here is writable. One rendering means one place for the row's controls.
      */
     onEdit?: (resource: readonly string[], id: string) => void
+    /**
+     * How this table's rows differ in shape, where they do.
+     *
+     * Absent is one column per field, which is right for a resource whose rows are all one type and
+     * is what every resource did before this existed. Present collapses the union to one slot per
+     * type: see `notes/typed-columns.md`, and `typedColumnLayout` for the rule.
+     *
+     * The types have to arrive from a declaration - a union's options, a catalogue's sources - and
+     * never from what a page happened to contain, because the layout is computed from them and a
+     * heading that reordered itself when the page changed would be worse than no heading at all.
+     */
+    typedColumns?: {
+        readonly types: readonly TypedFields[]
+        /** Which declared type a row answers to. A row it cannot place draws nothing typed. */
+        readonly typeOf: (row: unknown) => string | undefined
+    }
+    /**
+     * Whether a cell carries its type's mark as well as its type's colour.
+     *
+     * Defaults to on, and the default is the argument. A reader who cannot see the hue has no way
+     * of knowing a setting exists - the grid looks to them like one encoded in nothing - while a
+     * reader who finds the marks noisy is inconvenienced rather than shut out, and goes and finds
+     * the checkbox. Turning it off is therefore something a host may offer, never something this
+     * component decides.
+     */
+    glyphs?: boolean
 }) => {
     const [page, setPage] = useState(0)
     const [typed, setTyped] = useState('')
@@ -530,6 +559,25 @@ export const BranchTable = ({
         const narrowed = kind ? ({ field: 'kind', op: 'eq', operand: kind } as RpcFilter) : undefined
         return narrowed && searched ? ({ all: [narrowed, searched] } as RpcFilter) : narrowed ?? searched
     }, [kind, searched])
+    /**
+     * The column layout, where the caller said its rows are of several shapes.
+     *
+     * Up here with the other hooks rather than beside `headings`, because hooks run either way and
+     * `headings` is computed past four early returns. Derived from the declared types alone and from
+     * nothing on the page, so it holds still while a reader pages: it is a heading, and a heading
+     * that moved when the page did would be worse than no heading at all.
+     *
+     * `blank` is what a row whose type cannot be placed draws. It has to exist: falling back to the
+     * untyped columns for one row would give that row a different number of cells from the header
+     * above it, which is a broken table rather than a missing value.
+     */
+    const typedLayout = useMemo(() => {
+        if (!typedColumns) return undefined
+        const layout = typedColumnLayout(typedColumns.types)
+        // One resolution per type, not one per row: a page holds many rows of few types.
+        const drawn = new Map<string, readonly TypedCell[]>(typedColumns.types.map(({ type }) => [type, cellsFor(layout, type)]))
+        return { layout, drawn, blank: layout.columns.map(() => ({}) as TypedCell) }
+    }, [typedColumns])
     // A subtree where the resource answers for one, a level where it does not. Only the first can
     // be narrowed: a level is a level, and there is nowhere to push a filter to.
     const question = useMemo(
@@ -696,7 +744,7 @@ export const BranchTable = ({
     const headings = columns.length ? columns : ['id']
 
     return (
-        <div className="branch-table-wrap">
+        <div className={glyphs ? 'branch-table-wrap' : 'branch-table-wrap typed-plain'}>
             {tools}
             {/* Which kinds of thing are in here, where there is more than one.
              *
@@ -712,7 +760,18 @@ export const BranchTable = ({
                         all
                     </button>
                     {seen.map(([name, count]) => (
-                        <button key={name} className={kind === name ? 'toggle on' : 'toggle'} onClick={() => setKind(kind === name ? undefined : name)} title={name}>
+                        // The legend, and no new furniture to be one: these already name the kinds
+                        // on the page, so giving a chip the colour and mark of the rows it stands
+                        // for is what tells a reader which line of a stacked heading is which. A
+                        // chip naming something the resource did not declare stays plain, which is
+                        // honest - there is no channel to show, because no column is marked for it.
+                        <button
+                            key={name}
+                            className={kind === name ? 'toggle on' : 'toggle'}
+                            data-channel={typedLayout?.layout.stacked.find((held) => held.type === name)?.channel}
+                            onClick={() => setKind(kind === name ? undefined : name)}
+                            title={name}
+                        >
                             {name.split('.').pop()}
                             {/* Only while nothing is picked. The tally is of the page that arrived,
                                 and once a kind is asked for the peer answers with all of them - so
@@ -733,9 +792,32 @@ export const BranchTable = ({
                 <table className="branch-table">
                     <thead>
                         <tr>
-                            {headings.map((column) => (
-                                <th key={column}>{column}</th>
-                            ))}
+                            {typedLayout
+                                ? typedLayout.layout.columns.map((column, at) => (
+                                      <th key={at}>
+                                          {column.kind === 'shared' ? (
+                                              column.field
+                                          ) : (
+                                              <span className="typed-stack">
+                                                  {column.stack.map(({ type, channel, field: named }) => (
+                                                      // A line for every stacking type, blank where this one has
+                                                      // nothing here: that is what holds a type on the same line
+                                                      // in every column, and it is the only channel a reader
+                                                      // keeps when they are not reading the colour.
+                                                      <span
+                                                          key={type}
+                                                          className="typed-label"
+                                                          data-type={type}
+                                                          data-channel={named === undefined ? undefined : channel}
+                                                      >
+                                                          {named ?? '\u00a0'}
+                                                      </span>
+                                                  ))}
+                                              </span>
+                                          )}
+                                      </th>
+                                  ))
+                                : headings.map((column) => <th key={column}>{column}</th>)}
                             {actions?.length ? <th className="branch-actions-head" /> : null}
                         </tr>
                     </thead>
@@ -749,6 +831,9 @@ export const BranchTable = ({
                             // Everything here is a leaf by construction now, so an action for branches
                             // has nothing in this table to be about - it belongs on a tree row.
                             const offered = actionsOn(actions, { branch: false, kind: field(row, 'kind') })
+                            // A type this table was not told about draws the blank row rather than
+                            // the untyped columns, which would not match the header above it.
+                            const typedCells = typedLayout && (typedLayout.drawn.get(typedColumns!.typeOf(row) ?? '') ?? typedLayout.blank)
                             return (
                                 <tr
                                     key={id}
@@ -757,17 +842,34 @@ export const BranchTable = ({
                                         reference && onSelect ? () => onSelect(reference, id) : onPickRow ? () => onPickRow(id) : undefined
                                     }
                                 >
-                                    {headings.map((column) => {
-                                        const shown = cell(column === 'id' ? id : field(row, column))
-                                        // The whole value on the cell, because the column shows as much
-                                        // of it as fits and a reader should not have to open a row to
-                                        // find out what was cut.
-                                        return (
-                                            <td key={column} title={shown}>
-                                                {shown}
-                                            </td>
-                                        )
-                                    })}
+                                    {typedCells
+                                        ? typedCells.map(({ field: named, channel }, at) => {
+                                              const shown = named === undefined ? '' : cell(named === 'id' ? id : field(row, named))
+                                              // Empty because this type has no such field is not empty
+                                              // because the value is - the first is a fact about the
+                                              // row's shape, and only the layout knows it.
+                                              return (
+                                                  <td
+                                                      key={at}
+                                                      title={shown}
+                                                      className={named === undefined ? 'typed-absent' : undefined}
+                                                      data-channel={channel}
+                                                  >
+                                                      {shown}
+                                                  </td>
+                                              )
+                                          })
+                                        : headings.map((column) => {
+                                              const shown = cell(column === 'id' ? id : field(row, column))
+                                              // The whole value on the cell, because the column shows as
+                                              // much of it as fits and a reader should not have to open a
+                                              // row to find out what was cut.
+                                              return (
+                                                  <td key={column} title={shown}>
+                                                      {shown}
+                                                  </td>
+                                              )
+                                          })}
                                     {actions?.length || onMove || onEdit ? (
                                         <td className="branch-actions">
                                             {/* Before the declared actions, because moving is about

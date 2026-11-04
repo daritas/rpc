@@ -29,6 +29,7 @@
 export * from './types.js'
 export * from './scope.js'
 export * from './paging.js'
+export * from './typed-columns.js'
 export * from './filter.js'
 export * from './navigable.js'
 export * from './searching.js'
