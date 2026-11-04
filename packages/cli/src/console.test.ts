@@ -195,8 +195,13 @@ test('the console discovers a peer, describes it, calls it and streams its event
     // Unwatching has to stop the events, not merely change a label.
     t.deepEqual(await remote.unwatch(peer('boilerServer'), 'boiler', 'changed'), { watching: false, already: false })
     t.deepEqual((await remote.peers()).watching, [])
-    // The server drops its side too, rather than emitting into a listener nobody reads.
-    t.is(server.rpc.eventProxies.size, 0, 'the server kept a subscription after unwatch')
+    // The server drops its side too, rather than emitting into a listener nobody reads. What stays is
+    // the console following the peer's security events, which lasts as long as the console does.
+    t.deepEqual(
+        [...server.rpc.eventProxies.keys()].map((key) => key.split('\u0000').slice(0, 2).join('.')),
+        ['msgrpc.security'],
+        'the server kept a subscription after unwatch'
+    )
 
     const before = streamed.length
     await remote.call(peer('boilerServer'), 'boiler', 'setTemperature', [70])
