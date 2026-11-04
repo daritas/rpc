@@ -83,7 +83,8 @@ test('a document database is browsed over the wire with the verb a record alread
     const docs = description.namespaces?.find((namespace) => namespace.name === 'docs')
     t.deepEqual(
         docs?.component?.resources?.map((resource) => resource.path.join('.')).sort(),
-        ['customers', 'orders', 'sites']
+        // props and state are the record every described component publishes beside its tables.
+        ['customers', 'orders', 'props', 'sites', 'state']
     )
     const customers = docs?.component?.resources?.find((resource) => resource.path[0] === 'customers')
     t.is(customers?.row?.kind, 'object')

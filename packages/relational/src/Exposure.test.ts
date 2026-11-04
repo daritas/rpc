@@ -56,7 +56,8 @@ test('a database is browsed over the wire with the verb a record already answers
     const sql = description.namespaces?.find((namespace) => namespace.name === 'sql')
     t.deepEqual(
         sql?.component?.resources?.map((resource) => resource.path.join('.')).sort(),
-        ['customers', 'orders', 'sites']
+        // props and state are the record every described component publishes beside its tables.
+        ['customers', 'orders', 'props', 'sites', 'state']
     )
     const customers = sql?.component?.resources?.find((resource) => resource.path[0] === 'customers')
     t.is(customers?.row?.kind, 'object')
