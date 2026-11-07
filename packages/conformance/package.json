@@ -8,7 +8,7 @@
     "author": "anderswestberg",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/source-repo/rpc.git",
+        "url": "git+https://github.com/daritas/rpc.git",
         "directory": "packages/conformance"
     },
     "engines": {

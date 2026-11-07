@@ -1,6 +1,6 @@
 # @source-repo/continuity
 
-What a [Source RPC](https://github.com/source-repo/rpc) component keeps when the process implementing it is replaced: versioned state snapshots, adjacent forward migrations with reviewed defaults, the work a running activation was holding, and a record of every value that moved — and then the replacement itself, under a fence.
+What a [Source RPC](https://github.com/daritas/rpc) component keeps when the process implementing it is replaced: versioned state snapshots, adjacent forward migrations with reviewed defaults, the work a running activation was holding, and a record of every value that moved — and then the replacement itself, under a fence.
 
 **The online-change design, phases 1 to 4.** A component is a logical thing with a persistent address; the process implementing it is not, and it need not even be in the same language. What is here takes one process out and puts another in while callers keep talking to the same name, or refuses and says exactly why.
 

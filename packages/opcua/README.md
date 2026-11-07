@@ -64,6 +64,6 @@ No subscriptions, no writes, no methods, and no component per node. Two hundred 
 
 **Aspects browse; bindings will reach; components live.**
 
-The reasoning behind all of it is in [the design note](https://github.com/source-repo/rpc/blob/main/notes/opc-ua/opc-ua-as-aspect.md).
+The reasoning behind all of it is in [the design note](https://github.com/daritas/rpc/blob/main/notes/opc-ua/opc-ua-as-aspect.md).
 
 MIT.

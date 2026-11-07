@@ -108,7 +108,7 @@ To let a model manage these, give the MCP server a directory:
 source-rpc mcp --hub http://bus:7843 --scripts ./scripts
 ```
 
-It can then write, read, change, start and stop them, and read back what they printed. Each runs as its own process, is handed the network in its environment rather than hardcoding it, and is stopped when the server exits. See [the CLI README](https://github.com/source-repo/rpc/tree/main/packages/cli#peers-kept-as-scripts).
+It can then write, read, change, start and stop them, and read back what they printed. Each runs as its own process, is handed the network in its environment rather than hardcoding it, and is stopped when the server exits. See [the CLI README](https://github.com/daritas/rpc/tree/main/packages/cli#peers-kept-as-scripts).
 
 ## Which rung
 

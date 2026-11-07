@@ -18,4 +18,4 @@ builder.Services
     .AddResponder<AutomationSurface>();
 ```
 
-Full documentation, including the wire formats and what each safety semantic guarantees: [github.com/source-repo/rpc](https://github.com/source-repo/rpc/blob/main/packages/csharp/README.md).
+Full documentation, including the wire formats and what each safety semantic guarantees: [github.com/daritas/rpc](https://github.com/daritas/rpc/blob/main/packages/csharp/README.md).

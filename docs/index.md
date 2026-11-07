@@ -11,7 +11,7 @@ hero:
           link: /guide/getting-started
         - theme: alt
           text: GitHub
-          link: https://github.com/source-repo/rpc
+          link: https://github.com/daritas/rpc
 
 features:
     - title: Classes as contracts

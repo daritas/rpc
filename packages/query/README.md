@@ -1,10 +1,10 @@
 # @source-repo/query
 
-The pull half of a [Source RPC](https://github.com/source-repo/rpc) network: a [TanStack Query](https://tanstack.com/query) cache over `$data`, whose freshness comes from the publisher rather than from a clock.
+The pull half of a [Source RPC](https://github.com/daritas/rpc) network: a [TanStack Query](https://tanstack.com/query) cache over `$data`, whose freshness comes from the publisher rather than from a clock.
 
 Its own package with its own version, deliberately *not* bound to the rpc/rpc-cli versions-together rule, built against the library's public API only — the same footing as `@source-repo/queue`, and for the same reason.
 
-**Documentation: [source-repo.github.io/rpc](https://source-repo.github.io/rpc/)**
+**Documentation: [rpc.daritas.com](https://rpc.daritas.com/)**
 
 ## The one paragraph to read first
 

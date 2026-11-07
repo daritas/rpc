@@ -92,7 +92,7 @@ Given `--cert` and `--key` the CLI moves itself from 7843/7844 to 8843/8844 — 
 
 ## The honest limits
 
-**Delivery and execution are at least once**, unless the method is guarded by a durable idempotency store. That is true of every RPC system without one; the difference is whether it is written down. See [Commands](https://github.com/source-repo/rpc/tree/main/packages/rpc#commands).
+**Delivery and execution are at least once**, unless the method is guarded by a durable idempotency store. That is true of every RPC system without one; the difference is whether it is written down. See [Commands](https://github.com/daritas/rpc/tree/main/packages/rpc#commands).
 
 **Signing proves origin, not privacy.** It does not encrypt anything. Any MQTT client permitted to subscribe to `<prefix>/#` reads all of it. Only broker ACLs and TLS prevent that.
 

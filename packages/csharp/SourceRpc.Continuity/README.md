@@ -1,6 +1,6 @@
 # SourceRpc.Continuity
 
-Read, verify and take over a [Source RPC](https://github.com/source-repo/rpc) component's state, in .NET: the snapshot envelope, the revision manifest, the obligations a running activation was holding, the journal of what it did between snapshots, and the rules that decide whether a .NET revision may replace a TypeScript one.
+Read, verify and take over a [Source RPC](https://github.com/daritas/rpc) component's state, in .NET: the snapshot envelope, the revision manifest, the obligations a running activation was holding, the journal of what it did between snapshots, and the rules that decide whether a .NET revision may replace a TypeScript one.
 
 Beside `SourceRpc` rather than in it, for `SourceRpc.Query`'s reason: a device binding that answers calls and is never replaced online should not carry the snapshot envelope, the obligation vocabulary and the restore rules to reach a network it only ever serves. Unlike `SourceRpc.Query` it takes no dependency at all beyond the core — what it does is read a document and apply rules, and both of those are arithmetic. That is deliberate. This runs in the process that is about to become authoritative for a piece of plant, and the fewer things that have to load correctly before it can say *no*, the better.
 

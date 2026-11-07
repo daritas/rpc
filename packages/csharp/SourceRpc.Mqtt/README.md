@@ -12,4 +12,4 @@ await using var transport = new MqttTransport(
 
 **Frames can be signed.** MQTT is the one carrier with no connection to attribute a message to, so `mr-src` is only a claim until something checks it. HMAC signing, a replay guard and a reply-address policy are included, and the canonical bytes are byte-identical with the TypeScript library's.
 
-Needs [`SourceRpc`](https://www.nuget.org/packages/SourceRpc), which comes with it. Documentation: [github.com/source-repo/rpc](https://github.com/source-repo/rpc/blob/main/packages/csharp/README.md).
+Needs [`SourceRpc`](https://www.nuget.org/packages/SourceRpc), which comes with it. Documentation: [github.com/daritas/rpc](https://github.com/daritas/rpc/blob/main/packages/csharp/README.md).

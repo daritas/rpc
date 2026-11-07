@@ -15,7 +15,7 @@
     "author": "anderswestberg",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/source-repo/rpc.git",
+        "url": "git+https://github.com/daritas/rpc.git",
         "directory": "packages/diagnostics"
     },
     "engines": {
@@ -76,8 +76,8 @@
         "workerThreads": false,
         "concurrency": 1
     },
-    "homepage": "https://github.com/source-repo/rpc/tree/main/packages/diagnostics#readme",
+    "homepage": "https://github.com/daritas/rpc/tree/main/packages/diagnostics#readme",
     "bugs": {
-        "url": "https://github.com/source-repo/rpc/issues"
+        "url": "https://github.com/daritas/rpc/issues"
     }
 }

@@ -1,6 +1,6 @@
 # @source-repo/relational
 
-**Source Relational** serves an existing SQL database to a [Source RPC](https://github.com/source-repo/rpc) network as DataProvider resources. A console, a flow, a script or a model browses real tables — paged, filtered and ordered on the database rather than in the browser — without leaving the mesh and without anything between it and the table knowing that a database is involved.
+**Source Relational** serves an existing SQL database to a [Source RPC](https://github.com/daritas/rpc) network as DataProvider resources. A console, a flow, a script or a model browses real tables — paged, filtered and ordered on the database rather than in the browser — without leaving the mesh and without anything between it and the table knowing that a database is involved.
 
 The verb is `$data`, the same one a component's own record already answers. That is the point: this package adds a backend, not a protocol.
 

@@ -82,9 +82,9 @@ The image's entrypoint is the CLI itself, so one image is whichever command it i
 ```
 docker run -d -p 7843:7843 \
     -e SOURCE_RPC_TOKENS='{"3f9a…":"plantServer"}' \
-    ghcr.io/source-repo/rpc-cli                       # no command: the default is broker
+    ghcr.io/daritas/rpc-cli                       # no command: the default is broker
 
-docker run --rm -e SOURCE_RPC_TOKEN=3f9a… ghcr.io/source-repo/rpc-cli \
+docker run --rm -e SOURCE_RPC_TOKEN=3f9a… ghcr.io/daritas/rpc-cli \
     peers --hub http://bus:7843 --name plantServer    # any other command, same image
 ```
 
@@ -96,8 +96,8 @@ It also does not contain what they would need. There are two images:
 
 | | |
 | --- | --- |
-| `ghcr.io/source-repo/rpc-cli` | what this page is about. No package manager, no interpreter — nothing a bus has any use for. Zero fixable critical or high vulnerabilities. |
-| `ghcr.io/source-repo/rpc-cli:dev` | the same CLI with `npm` and `python3`, for a development machine running `--scripts` or Python handlers |
+| `ghcr.io/daritas/rpc-cli` | what this page is about. No package manager, no interpreter — nothing a bus has any use for. Zero fixable critical or high vulnerabilities. |
+| `ghcr.io/daritas/rpc-cli:dev` | the same CLI with `npm` and `python3`, for a development machine running `--scripts` or Python handlers |
 
 `latest` points at the first, so pulling without thinking gets the one meant for a plant. The development image carries npm's bundled dependencies and their advisories; that is the trade it exists to make, and it is why the two are separate rather than one image with everything in it.
 

@@ -31,6 +31,10 @@ services:
     # The bus. Peers that cannot share an MQTT broker - a browser page above all, which cannot
     # listen at all - dial this instead and become reachable by name.
     bus:
+        # Still ghcr.io/source-repo/... deliberately: this file has to pull. The repository
+        # moved to the daritas org on 2026-11-07 and the release workflow publishes to
+        # ghcr.io/${github.repository_owner}/rpc-cli, so the next release lands under daritas
+        # and this becomes ghcr.io/daritas/rpc-cli:3. Until then that tag does not exist.
         image: ghcr.io/source-repo/rpc-cli:3
         container_name: source-rpc-bus
         restart: unless-stopped
@@ -50,6 +54,10 @@ services:
     # The CLI, alive in a container with a port open. Same image as the bus, different command:
     # it joins the bus as a peer and serves the browser console on 7844.
     console:
+        # Still ghcr.io/source-repo/... deliberately: this file has to pull. The repository
+        # moved to the daritas org on 2026-11-07 and the release workflow publishes to
+        # ghcr.io/${github.repository_owner}/rpc-cli, so the next release lands under daritas
+        # and this becomes ghcr.io/daritas/rpc-cli:3. Until then that tag does not exist.
         image: ghcr.io/source-repo/rpc-cli:3
         container_name: source-rpc-console
         restart: unless-stopped

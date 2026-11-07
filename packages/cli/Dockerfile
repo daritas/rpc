@@ -62,9 +62,9 @@ FROM base AS dev
 
 RUN apk add --no-cache python3
 
-LABEL org.opencontainers.image.source="https://github.com/source-repo/rpc" \
-      org.opencontainers.image.url="https://github.com/source-repo/rpc" \
-      org.opencontainers.image.documentation="https://github.com/source-repo/rpc/tree/main/packages/cli#readme" \
+LABEL org.opencontainers.image.source="https://github.com/daritas/rpc" \
+      org.opencontainers.image.url="https://github.com/daritas/rpc" \
+      org.opencontainers.image.documentation="https://github.com/daritas/rpc/tree/main/packages/cli#readme" \
       org.opencontainers.image.title="Source RPC CLI (development)" \
       org.opencontainers.image.description="Source RPC CLI with npm and python3, for --scripts and --allow-exec. Development machines only; use the untagged image on a plant." \
       org.opencontainers.image.licenses="MIT" \
@@ -93,9 +93,9 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 # `source` is the one that does the work: GitHub Packages links an image to a repository by this
 # label and nothing else, and an unlinked package page shows no README, no licence and no way back
 # to the source. The rest are what a registry lists the image by.
-LABEL org.opencontainers.image.source="https://github.com/source-repo/rpc" \
-      org.opencontainers.image.url="https://github.com/source-repo/rpc" \
-      org.opencontainers.image.documentation="https://github.com/source-repo/rpc/tree/main/packages/cli#readme" \
+LABEL org.opencontainers.image.source="https://github.com/daritas/rpc" \
+      org.opencontainers.image.url="https://github.com/daritas/rpc" \
+      org.opencontainers.image.documentation="https://github.com/daritas/rpc/tree/main/packages/cli#readme" \
       org.opencontainers.image.title="Source RPC CLI" \
       org.opencontainers.image.description="A Source RPC bus, browser console, MCP server or traffic recorder - whichever command it is given." \
       org.opencontainers.image.licenses="MIT" \

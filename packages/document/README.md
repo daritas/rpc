@@ -1,6 +1,6 @@
 # @source-repo/document
 
-**Source Document** serves an existing MongoDB database to a [Source RPC](https://github.com/source-repo/rpc) network as DataProvider resources. A console, a flow, a script or a model browses real collections — paged, filtered and ordered on the database rather than in the browser — without leaving the mesh.
+**Source Document** serves an existing MongoDB database to a [Source RPC](https://github.com/daritas/rpc) network as DataProvider resources. A console, a flow, a script or a model browses real collections — paged, filtered and ordered on the database rather than in the browser — without leaving the mesh.
 
 The verb is `$data`, the same one a component's own record and [`@source-repo/relational`](../relational) already answer. One contract, a second backend.
 

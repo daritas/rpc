@@ -28,4 +28,4 @@ npm install @source-repo/continuity
 - **Retention is what stays replayable** — compaction takes a snapshot rather than a date, and refuses where it would leave a journal that looked whole and could no longer carry the snapshot it was kept for. The chain makes an altered or removed entry detectable rather than merely absent.
 - **A manifest describes a revision and does not approve one** — an artifact that could authorise itself by asserting its own capabilities would make the approval path decorative.
 
-Full documentation: the [package README](https://github.com/source-repo/rpc/blob/main/packages/continuity/README.md). On npm: [@source-repo/continuity](https://www.npmjs.com/package/@source-repo/continuity).
+Full documentation: the [package README](https://github.com/daritas/rpc/blob/main/packages/continuity/README.md). On npm: [@source-repo/continuity](https://www.npmjs.com/package/@source-repo/continuity).

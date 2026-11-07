@@ -17,8 +17,8 @@
     <Authors>anderswestberg</Authors>
     <PackageTags>rpc;msgrpc;automation;iiot</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/source-repo/rpc</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/source-repo/rpc</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/daritas/rpc</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/daritas/rpc</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <!-- Shown on the package page. Every package carries one: a NuGet page with no readme is a

@@ -20,4 +20,4 @@ That is worth more here than it would be to most applications, because **this no
 
 The honest caveat: the one pipeline uses `$unset` and a binary collation, which is the likeliest place a compatible-but-not-identical engine differs. So treat a non-MongoDB backend as **worth testing rather than assumed** — and note that when compatibility does fall short it fails visibly, as a query error naming the stage, rather than by quietly returning the wrong rows.
 
-Full documentation: the [package README](https://github.com/source-repo/rpc/blob/main/packages/document/README.md). On npm: [@source-repo/document](https://www.npmjs.com/package/@source-repo/document).
+Full documentation: the [package README](https://github.com/daritas/rpc/blob/main/packages/document/README.md). On npm: [@source-repo/document](https://www.npmjs.com/package/@source-repo/document).
