@@ -47,6 +47,16 @@ jobs:
 
             - run: npm run docs:build
 
+            # The Sparkplug projection schema names itself https://rpc.daritas.com/schemas/... in
+            # its own $id, so that URL has to answer. Copied into the built site rather than
+            # duplicated under docs/public, because a schema with two copies in one repository is
+            # a schema with two answers. The package ships its own copy for editor validation;
+            # this is the published identity resolving to the same bytes.
+            - name: Publish the schemas named by a $id
+              run: |
+                  mkdir -p docs/.vitepress/dist/schemas
+                  cp packages/sparkplug/sparkplug.projection.schema.json docs/.vitepress/dist/schemas/
+
             # Before the upload, so a dead link fails the release of the site rather than being
             # published on it. VitePress's own checker is off by design - see the script.
             - name: Check the built site's internal links
