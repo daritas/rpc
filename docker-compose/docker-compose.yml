@@ -51,7 +51,7 @@ services:
       POSTGRES_PASSWORD: test
       POSTGRES_DB: test
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     # Tmpfs rather than a volume: nothing here survives a restart on purpose, and a suite that
     # started finding yesterday's tables would be a suite that passes for the wrong reason.
     tmpfs:
@@ -88,7 +88,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: test
       MONGO_INITDB_ROOT_PASSWORD: test
     ports:
-      - '27017:27017'
+      - '127.0.0.1:27017:27017'
     tmpfs:
       - /data/db
     healthcheck:
@@ -111,7 +111,7 @@ services:
       MYSQL_USER: test
       MYSQL_PASSWORD: test
     ports:
-      - '3306:3306'
+      - '127.0.0.1:3306:3306'
     tmpfs:
       - /var/lib/mysql
     healthcheck:
