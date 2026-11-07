@@ -15,7 +15,7 @@
     "author": "anderswestberg",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/source-repo/rpc.git",
+        "url": "git+https://github.com/daritas/rpc.git",
         "directory": "packages/rpc"
     },
     "engines": {
@@ -72,8 +72,8 @@
         "concurrency": 1,
         "timeout": "2m"
     },
-    "homepage": "https://github.com/source-repo/rpc/tree/main/packages/rpc#readme",
+    "homepage": "https://github.com/daritas/rpc/tree/main/packages/rpc#readme",
     "bugs": {
-        "url": "https://github.com/source-repo/rpc/issues"
+        "url": "https://github.com/daritas/rpc/issues"
     }
 }

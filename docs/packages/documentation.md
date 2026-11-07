@@ -16,4 +16,4 @@ npm install @source-repo/documentation
 
 Adding HTML, RTF or a Source View artefact is a reader and a line in a list. Two ship, which is one more than is needed to use the package and exactly enough to prove the seam.
 
-Full documentation: the [package README](https://github.com/source-repo/rpc/blob/main/packages/documentation/README.md). On npm: [@source-repo/documentation](https://www.npmjs.com/package/@source-repo/documentation).
+Full documentation: the [package README](https://github.com/daritas/rpc/blob/main/packages/documentation/README.md). On npm: [@source-repo/documentation](https://www.npmjs.com/package/@source-repo/documentation).

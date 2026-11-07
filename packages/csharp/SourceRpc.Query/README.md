@@ -1,6 +1,6 @@
 # SourceRpc.Query
 
-The pull half of a [Source RPC](https://github.com/source-repo/rpc) network, for .NET: what a failure means, whether a call may be sent again, a deadline that is a budget across attempts, and a canonical cache key — over [Polly](https://www.pollydocs.org) and [FusionCache](https://github.com/ZiggyCreatures/FusionCache).
+The pull half of a [Source RPC](https://github.com/daritas/rpc) network, for .NET: what a failure means, whether a call may be sent again, a deadline that is a budget across attempts, and a canonical cache key — over [Polly](https://www.pollydocs.org) and [FusionCache](https://github.com/ZiggyCreatures/FusionCache).
 
 Beside `SourceRpc` rather than in it: the core depends on nothing but the BCL, and a device binding that never pulls should not carry a resilience engine and a cache to reach a network it only answers. Its own version line, because it is built against the core's public API rather than against its shape.
 

@@ -18,4 +18,4 @@ Derived arrangements need an explicit, bounded `index()`. A browse answers *what
 
 No subscriptions, no writes, no methods, and no component per node. Two hundred thousand UA nodes are two hundred thousand occurrences behind one provider. **Aspects browse; bindings reach; components live.**
 
-Full documentation: the [package README](https://github.com/source-repo/rpc/blob/main/packages/opcua/README.md), and [the design note](https://github.com/source-repo/rpc/blob/main/notes/opc-ua/opc-ua-as-aspect.md) it was built from. On npm: [@source-repo/opcua](https://www.npmjs.com/package/@source-repo/opcua).
+Full documentation: the [package README](https://github.com/daritas/rpc/blob/main/packages/opcua/README.md), and [the design note](https://github.com/daritas/rpc/blob/main/notes/opc-ua/opc-ua-as-aspect.md) it was built from. On npm: [@source-repo/opcua](https://www.npmjs.com/package/@source-repo/opcua).

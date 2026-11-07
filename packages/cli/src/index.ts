@@ -201,7 +201,7 @@ const usage = `source-rpc <command> [options]          --version prints the CLI 
     shared network settings and console, MCP, node or serve tasks; relative paths are resolved from the
     task file. Each task's credentials are its own: a key file under 'sign', an auth file under
     'auth', or the same secrets written inline in either. Full format:
-    https://source-repo.github.io/rpc/tools/cli#task-files
+    https://rpc.daritas.com/tools/cli#task-files
     --init                      write a task file to start from, with three roles and fresh signing
                                 secrets, and refuse to write over one that exists. --broker, --hub
                                 and --scriptable-by fill in what they name

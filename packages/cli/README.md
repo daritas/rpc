@@ -21,19 +21,19 @@ Tooling for [Source RPC](https://www.npmjs.com/package/@source-repo/rpc): read a
 npm install --save-dev @source-repo/rpc-cli
 ```
 
-The command is `source-rpc`. ESM only, Node 22 or later. Container images at `ghcr.io/source-repo/rpc-cli`.
+The command is `source-rpc`. ESM only, Node 22 or later. Container images at `ghcr.io/daritas/rpc-cli`.
 
-**Documentation: [source-repo.github.io/rpc](https://source-repo.github.io/rpc/)** — [the command line](https://source-repo.github.io/rpc/tools/cli), [the console](https://source-repo.github.io/rpc/tools/console) and [the MCP server](https://source-repo.github.io/rpc/tools/mcp) in full.
+**Documentation: [rpc.daritas.com](https://rpc.daritas.com/)** — [the command line](https://rpc.daritas.com/tools/cli), [the console](https://rpc.daritas.com/tools/console) and [the MCP server](https://rpc.daritas.com/tools/mcp) in full.
 
 ## What you would not expect
 
 What a CLI usually ships for an RPC library is a code generator. A Source RPC server describes itself at runtime, so this one is a set of instruments instead — and these five are the ones people are surprised to find:
 
-- **[The traffic tap](https://source-repo.github.io/rpc/tools/console#the-traffic-tap)** — `tcpdump` for RPC. It pairs a call to its reply and reports the method and the latency, *neither of which is in the reply itself*. Armed by a call rather than a restart, because a plant bus that has to be restarted before it can be watched will not be watched.
-- **[`record` and `replay`](https://source-repo.github.io/rpc/tools/cli#record-and-replay)** — capture a live session, replay it at the replacement device, and exit 1 on divergence. A call that failed *the same way it failed when recorded* counts as a match.
-- **[`check --peer`](https://source-repo.github.io/rpc/tools/cli#check)** — ask the box on the wall what it serves and compare that against the committed contract, using the comparator the server itself applies at runtime.
-- **[`serve --fail plant.halt=Timeout`](https://source-repo.github.io/rpc/tools/cli#serve)** — a fake built from a contract and told to *never answer*. Staging a hang usually means pulling a cable.
-- **[`mcp`](https://source-repo.github.io/rpc/tools/mcp)** — the live network as tools for a model: list the peers, describe one, call it with arguments checked locally first, find who implements a capability, or stand a fake up from a contract passed inline.
+- **[The traffic tap](https://rpc.daritas.com/tools/console#the-traffic-tap)** — `tcpdump` for RPC. It pairs a call to its reply and reports the method and the latency, *neither of which is in the reply itself*. Armed by a call rather than a restart, because a plant bus that has to be restarted before it can be watched will not be watched.
+- **[`record` and `replay`](https://rpc.daritas.com/tools/cli#record-and-replay)** — capture a live session, replay it at the replacement device, and exit 1 on divergence. A call that failed *the same way it failed when recorded* counts as a match.
+- **[`check --peer`](https://rpc.daritas.com/tools/cli#check)** — ask the box on the wall what it serves and compare that against the committed contract, using the comparator the server itself applies at runtime.
+- **[`serve --fail plant.halt=Timeout`](https://rpc.daritas.com/tools/cli#serve)** — a fake built from a contract and told to *never answer*. Staging a hang usually means pulling a cable.
+- **[`mcp`](https://rpc.daritas.com/tools/mcp)** — the live network as tools for a model: list the peers, describe one, call it with arguments checked locally first, find who implements a capability, or stand a fake up from a contract passed inline.
 
 ## Commands
 
@@ -69,4 +69,4 @@ source-rpc replay    send a recording's calls at a peer and compare the answers
 source-rpc bench     call one method over and over and report what it cost
 ```
 
-Every command, flag and port convention is documented on [the site](https://source-repo.github.io/rpc/tools/cli).
+Every command, flag and port convention is documented on [the site](https://rpc.daritas.com/tools/cli).

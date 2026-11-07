@@ -28,7 +28,7 @@ The same applies to every `MqttTransportOptions` field: the url form takes the d
 
 ### Topics
 
-MQTT 5 is the default. Reply address, correlation and method travel as packet properties, so a peer with no msgrpc code can take part and standard tooling can read the traffic. [`docs/mqtt5-frame-spec.md`](https://github.com/source-repo/rpc/blob/main/docs/mqtt5-frame-spec.md) describes the layout in full.
+MQTT 5 is the default. Reply address, correlation and method travel as packet properties, so a peer with no msgrpc code can take part and standard tooling can read the traffic. [`docs/mqtt5-frame-spec.md`](https://github.com/daritas/rpc/blob/main/docs/mqtt5-frame-spec.md) describes the layout in full.
 
 ```
 <prefix>/req/<peer>        calls and subscribe requests            default prefix msgrpc/v2

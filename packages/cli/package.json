@@ -74,11 +74,11 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/source-repo/rpc.git",
+        "url": "git+https://github.com/daritas/rpc.git",
         "directory": "packages/cli"
     },
-    "homepage": "https://github.com/source-repo/rpc/tree/main/packages/cli#readme",
+    "homepage": "https://github.com/daritas/rpc/tree/main/packages/cli#readme",
     "bugs": {
-        "url": "https://github.com/source-repo/rpc/issues"
+        "url": "https://github.com/daritas/rpc/issues"
     }
 }

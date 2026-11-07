@@ -69,4 +69,4 @@ Only tokens declaring `capture: 'explicit'` may leave their chain; `exposure: 'l
 
 The `$context` protocol (read / subscribe / unsubscribe, register-then-snapshot, full frames only) is served at the dispatch level. Every call passes `authorize()` with the node and every requested token id visible in params; there is no enumeration surface, so a caller must already know a token's id; and a token whose provider declares `exposure: 'local'` is filtered from remote answers *silently* — a refusal would confirm the secret exists.
 
-`RpcClient.readContext(peer, node, tokenIds)` is the one-shot form, for tools — and for [the work queue's `latest` task context](https://github.com/source-repo/rpc/blob/main/packages/queue/README.md), which resolves the source host's context when execution starts.
+`RpcClient.readContext(peer, node, tokenIds)` is the one-shot form, for tools — and for [the work queue's `latest` task context](https://github.com/daritas/rpc/blob/main/packages/queue/README.md), which resolves the source host's context when execution starts.

@@ -1,6 +1,6 @@
 # @source-repo/diagnostics
 
-Live values beside the source that declares them, for a [Source RPC](https://github.com/source-repo/rpc) node. The oldest way of looking at a machine — the program on screen with what each thing currently is written next to it — without a debugger, without instrumentation, and without a second data path.
+Live values beside the source that declares them, for a [Source RPC](https://github.com/daritas/rpc) node. The oldest way of looking at a machine — the program on screen with what each thing currently is written next to it — without a debugger, without instrumentation, and without a second data path.
 
 **Phases 1 to 3 of the node diagnostics design.** Source-linked props and state; a diagnostic variant that can be proved a derivative, generated, and swapped in over a state-preserving handoff; and a bounded sink for what its probes see. Tracepoints capture without stopping, safe-boundary breakpoints stop between units of work, and an exact breakpoint stops on the line — the last of those needing the component's logic on a thread of its own. Stepping is advertised as `false` rather than left out.
 
@@ -260,7 +260,7 @@ A pause nobody ends ends itself, on the parked thread's own deadline, because th
 
 The fast path is one `Atomics.load` — about 5 ns per arrival, against 1 ns for a plain read. Twenty statements cost 100 ns; a million-iteration loop with a gate in it costs 5 ms.
 
-[The full findings](https://github.com/source-repo/rpc/blob/main/notes/exact-pause-feasibility.md), including the limit that shapes the phase: a parked thread freezes *everything* sharing it, so a pause scope of one component means a worker per component — and the expensive part is not this gate but moving component logic off the transport's thread.
+[The full findings](https://github.com/daritas/rpc/blob/main/notes/exact-pause-feasibility.md), including the limit that shapes the phase: a parked thread freezes *everything* sharing it, so a pause scope of one component means a worker per component — and the expensive part is not this gate but moving component logic off the transport's thread.
 
 ## License
 

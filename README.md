@@ -81,15 +81,15 @@ The console calls `ovenSrv` without knowing it is on MQTT. `ovenSrv` calls the b
 
 - **A method declares what calling it does to the world.** `query`, `idempotent-command` or `non-repeatable-command` — part of the contract, not a comment. `source-rpc check` calls it a **breaking change** when a method becomes more dangerous to repeat than the version a caller was built against. Every type still lines up in that case, which is exactly why nothing else catches it.
 - **`UnknownOutcome`.** *The request never left* is a different fact from *it left and nothing came back*. `TransportError` now means the first, so a caller can tell "certainly did not run" from "go and look before sending it again".
-- **Commands that run once.** Give the server a durable [`RpcIdempotencyStore`](https://github.com/source-repo/rpc/tree/main/packages/rpc#commands) and a redelivery after a crash is answered from the record instead of executed again. It is consulted only for non-repeatable commands, the outcome is written *before* the answer goes out, and a store that cannot be reached refuses the command rather than failing open.
+- **Commands that run once.** Give the server a durable [`RpcIdempotencyStore`](https://github.com/daritas/rpc/tree/main/packages/rpc#commands) and a redelivery after a crash is answered from the record instead of executed again. It is consulted only for non-repeatable commands, the outcome is written *before* the answer goes out, and a store that cannot be reached refuses the command rather than failing open.
 - **Deadlines that survive the trip.** A request carries the milliseconds its caller will still wait; the MQTT broker is given the same expiry; and the deadline is read again *after* the call has queued, so a command that waited out its caller is refused rather than run late.
 - **Ordering where it matters.** One call at a time per instance, or per key — which is how a server fronting fifty devices keeps each device's commands in order without serialising itself behind the slowest of them.
-- **Two transports, one model, one vocabulary.** Both an [MQTT 5 wire format](https://github.com/source-repo/rpc/blob/main/docs/mqtt5-frame-spec.md) and a [flat frame](https://github.com/source-repo/rpc/blob/main/docs/flat-frame-spec.md) for connections — socket.io and SignalR — that a plain MQTT.js, socket.io or C# peer can speak with none of this code. Reply address, correlation, method and deadline are packet properties or flat fields, never an opaque envelope, and they carry the same names on both, so a peer in another language implements the protocol once.
+- **Two transports, one model, one vocabulary.** Both an [MQTT 5 wire format](https://github.com/daritas/rpc/blob/main/docs/mqtt5-frame-spec.md) and a [flat frame](https://github.com/daritas/rpc/blob/main/docs/flat-frame-spec.md) for connections — socket.io and SignalR — that a plain MQTT.js, socket.io or C# peer can speak with none of this code. Reply address, correlation, method and deadline are packet properties or flat fields, never an opaque envelope, and they carry the same names on both, so a peer in another language implements the protocol once.
 - **Authentication on both sides of the seam.** Per-connection tokens where there is a connection, per-frame signing (HMAC or Ed25519) with replay protection where there is not. An authenticated name is pinned: a peer cannot address frames as another peer.
 
 ## The tooling is half the point
 
-[`@source-repo/rpc-cli`](https://github.com/source-repo/rpc/tree/main/packages/cli) is not the usual thin wrapper. Because a server can describe itself, the CLI can do things an RPC library does not normally offer:
+[`@source-repo/rpc-cli`](https://github.com/daritas/rpc/tree/main/packages/cli) is not the usual thin wrapper. Because a server can describe itself, the CLI can do things an RPC library does not normally offer:
 
 - **`tap`** — `tcpdump` for RPC. It pairs a call to its reply and reports the method and the latency, *neither of which is in the reply itself*, which is what a topic browser on the same wire cannot do. Armed by a call rather than a restart, because a plant bus that has to be restarted before it can be watched will not be watched.
 - **`record` / `replay`** — capture a live session, replay it at the replacement device, exit 1 on divergence. A call that failed *the same way it failed when recorded* counts as a match, because otherwise no recording of a real plant is usable.
@@ -101,8 +101,8 @@ The console calls `ovenSrv` without knowing it is on MQTT. `ovenSrv` calls the b
 
 | | |
 | --- | --- |
-| [`packages/rpc`](https://github.com/source-repo/rpc/tree/main/packages/rpc) | `@source-repo/rpc` — the library. Start here. |
-| [`packages/cli`](https://github.com/source-repo/rpc/tree/main/packages/cli) | `@source-repo/rpc-cli` — the `source-rpc` command, and the container. |
+| [`packages/rpc`](https://github.com/daritas/rpc/tree/main/packages/rpc) | `@source-repo/rpc` — the library. Start here. |
+| [`packages/cli`](https://github.com/daritas/rpc/tree/main/packages/cli) | `@source-repo/rpc-cli` — the `source-rpc` command, and the container. |
 
 ESM only, Node 22 or later, and it runs in the browser.
 
@@ -112,32 +112,32 @@ The two package READMEs are the complete reference for their package — every o
 
 | guide | |
 | --- | --- |
-| [Deploying a network](https://github.com/source-repo/rpc/blob/main/docs/deploying-a-network.md) | broker, bus, console, ports, TLS, containers, and watching one that is already misbehaving |
-| [Writing a simulator](https://github.com/source-repo/rpc/blob/main/docs/writing-a-simulator.md) | the four rungs from a fake built out of a contract to a peer of your own, and when to stop climbing |
-| [The security model](https://github.com/source-repo/rpc/blob/main/docs/security-model.md) | what is checked where, why the two transports differ, and the limits stated plainly |
-| [MQTT 5 frame spec](https://github.com/source-repo/rpc/blob/main/docs/mqtt5-frame-spec.md) | the wire format over a broker, so a peer that is not this library can join |
-| [flat frame spec](https://github.com/source-repo/rpc/blob/main/docs/flat-frame-spec.md) | the same protocol over a connection — socket.io, SignalR — in one flat frame |
-| [Tooling roadmap](https://github.com/source-repo/rpc/blob/main/notes/tooling-roadmap.md) | what the CLI could become, and what each piece would cost |
+| [Deploying a network](https://github.com/daritas/rpc/blob/main/docs/deploying-a-network.md) | broker, bus, console, ports, TLS, containers, and watching one that is already misbehaving |
+| [Writing a simulator](https://github.com/daritas/rpc/blob/main/docs/writing-a-simulator.md) | the four rungs from a fake built out of a contract to a peer of your own, and when to stop climbing |
+| [The security model](https://github.com/daritas/rpc/blob/main/docs/security-model.md) | what is checked where, why the two transports differ, and the limits stated plainly |
+| [MQTT 5 frame spec](https://github.com/daritas/rpc/blob/main/docs/mqtt5-frame-spec.md) | the wire format over a broker, so a peer that is not this library can join |
+| [flat frame spec](https://github.com/daritas/rpc/blob/main/docs/flat-frame-spec.md) | the same protocol over a connection — socket.io, SignalR — in one flat frame |
+| [Tooling roadmap](https://github.com/daritas/rpc/blob/main/notes/tooling-roadmap.md) | what the CLI could become, and what each piece would cost |
 
 | reference | |
 | --- | --- |
-| [`@source-repo/rpc`](https://github.com/source-repo/rpc/tree/main/packages/rpc#readme) | the library: connecting, commands, contracts, auth, MQTT, options |
-| [`@source-repo/rpc-cli`](https://github.com/source-repo/rpc/tree/main/packages/cli#readme) | the command: console, tap, verbs, extract/check, serve, record, mcp |
-| [`@source-repo/aspects`](https://github.com/source-repo/rpc/tree/main/packages/aspects#readme) | several structures over the same objects, and links that keep their context |
-| [`@source-repo/documentation`](https://github.com/source-repo/rpc/tree/main/packages/documentation#readme) | the documentation aspect: what describes a thing, in whatever format it was written |
-| [`@source-repo/opcua`](https://github.com/source-repo/rpc/tree/main/packages/opcua#readme) | an OPC UA address space as aspects: browsed a branch at a time, identity that survives a reconnect |
+| [`@source-repo/rpc`](https://github.com/daritas/rpc/tree/main/packages/rpc#readme) | the library: connecting, commands, contracts, auth, MQTT, options |
+| [`@source-repo/rpc-cli`](https://github.com/daritas/rpc/tree/main/packages/cli#readme) | the command: console, tap, verbs, extract/check, serve, record, mcp |
+| [`@source-repo/aspects`](https://github.com/daritas/rpc/tree/main/packages/aspects#readme) | several structures over the same objects, and links that keep their context |
+| [`@source-repo/documentation`](https://github.com/daritas/rpc/tree/main/packages/documentation#readme) | the documentation aspect: what describes a thing, in whatever format it was written |
+| [`@source-repo/opcua`](https://github.com/daritas/rpc/tree/main/packages/opcua#readme) | an OPC UA address space as aspects: browsed a branch at a time, identity that survives a reconnect |
 
-**Several structures over the same things.** A plant object is viewed in more than one way — IEC 81346's function (`=`), product (`-`), location (`+`) and, since 2022, type (`%`) — and none of them is where the object lives. [`@source-repo/aspects`](https://github.com/source-repo/rpc/tree/main/packages/aspects#readme) is that idea over this library: a provider says what is under a node and where an object appears, and gets each structure published as a lazy tree plus links that re-resolve against the structure as it is now rather than pointing at a path that has moved. Two providers exist so far. [`@source-repo/documentation`](https://github.com/source-repo/rpc/tree/main/packages/documentation#readme) serves a directory as the documentation aspect — by folder and by topic, one document either way. [`@source-repo/opcua`](https://github.com/source-repo/rpc/tree/main/packages/opcua#readme) serves an OPC UA server: its address space browsed a branch at a time, plus functional and location arrangements derived from rules the deployment supplies, with a node's identity taken from the namespace URI so it survives a reconnect. The first proves one object in several human structures; the second proves one live industrial object in several machine ones, which is the harder half.
+**Several structures over the same things.** A plant object is viewed in more than one way — IEC 81346's function (`=`), product (`-`), location (`+`) and, since 2022, type (`%`) — and none of them is where the object lives. [`@source-repo/aspects`](https://github.com/daritas/rpc/tree/main/packages/aspects#readme) is that idea over this library: a provider says what is under a node and where an object appears, and gets each structure published as a lazy tree plus links that re-resolve against the structure as it is now rather than pointing at a path that has moved. Two providers exist so far. [`@source-repo/documentation`](https://github.com/daritas/rpc/tree/main/packages/documentation#readme) serves a directory as the documentation aspect — by folder and by topic, one document either way. [`@source-repo/opcua`](https://github.com/daritas/rpc/tree/main/packages/opcua#readme) serves an OPC UA server: its address space browsed a branch at a time, plus functional and location arrangements derived from rules the deployment supplies, with a node's identity taken from the namespace URI so it survives a reconnect. The first proves one object in several human structures; the second proves one live industrial object in several machine ones, which is the harder half.
 
 ## Run a whole network
 
-The CLI is also an image, `ghcr.io/source-repo/rpc-cli`, whose entrypoint is the command itself — so one image is the bus, the console, the MCP server or the recorder depending on what it is asked to run.
+The CLI is also an image, `ghcr.io/daritas/rpc-cli`, whose entrypoint is the command itself — so one image is the bus, the console, the MCP server or the recorder depending on what it is asked to run.
 
 ```
-docker run -d -p 7843:7843 ghcr.io/source-repo/rpc-cli          # a bus; broker is the default command
+docker run -d -p 7843:7843 ghcr.io/daritas/rpc-cli          # a bus; broker is the default command
 ```
 
-[`docker-compose/network.yml`](https://github.com/source-repo/rpc/blob/main/docker-compose/network.yml) brings up an MQTT broker, a bus and a console together, which is the shape a plant deploys:
+[`docker-compose/network.yml`](https://github.com/daritas/rpc/blob/main/docker-compose/network.yml) brings up an MQTT broker, a bus and a console together, which is the shape a plant deploys:
 
 ```
 echo "CONSOLE_TOKEN=$(openssl rand -hex 32)" > docker-compose/.env
@@ -159,7 +159,7 @@ Adjacent, and deliberately clear of the 80xx range where the rest of a developer
 
 **Delivery and execution are at least once, unless the method is guarded by a durable idempotency store.** That is true of every RPC system without one; the difference is whether it is written down.
 
-Relaying is not brokering: nothing is queued for a peer that is not connected, and discovery reports reachability rather than routes. There is no cancellation — a deadline bounds a call, but nothing tells a running method to stop, and doing that properly needs handler cooperation a library cannot supply. The full list, with the reasoning, is in [the library README](https://github.com/source-repo/rpc/tree/main/packages/rpc#commands).
+Relaying is not brokering: nothing is queued for a peer that is not connected, and discovery reports reachability rather than routes. There is no cancellation — a deadline bounds a call, but nothing tells a running method to stop, and doing that properly needs handler cooperation a library cannot supply. The full list, with the reasoning, is in [the library README](https://github.com/daritas/rpc/tree/main/packages/rpc#commands).
 
 ## Development
 
@@ -174,7 +174,7 @@ Without a broker the MQTT tests skip themselves, which is right on a laptop and 
 
 The broker is named by `MSGRPC_TEST_BROKER`, which defaults to `mqtt://localhost:1883` — where the compose file puts EMQX. Point it at a broker that is already running instead of starting another: `MSGRPC_TEST_BROKER=mqtt://localhost:1884 npm test` for a mosquitto on 1884. Whatever it names must accept an anonymous CONNECT, since no peer in the suite sends credentials — that is what `EMQX_AUTHENTICATION: '[]'` in the compose file is for, and mosquitto needs `allow_anonymous true`.
 
-[`docs/mqtt5-frame-spec.md`](https://github.com/source-repo/rpc/blob/main/docs/mqtt5-frame-spec.md) and [`docs/flat-frame-spec.md`](https://github.com/source-repo/rpc/blob/main/docs/flat-frame-spec.md) describe the two wire formats. [`CHANGELOG.md`](https://github.com/source-repo/rpc/blob/main/CHANGELOG.md) covers what breaks between versions.
+[`docs/mqtt5-frame-spec.md`](https://github.com/daritas/rpc/blob/main/docs/mqtt5-frame-spec.md) and [`docs/flat-frame-spec.md`](https://github.com/daritas/rpc/blob/main/docs/flat-frame-spec.md) describe the two wire formats. [`CHANGELOG.md`](https://github.com/daritas/rpc/blob/main/CHANGELOG.md) covers what breaks between versions.
 
 The packages and the command were renamed in 3.0 — `msgrpc` became Source RPC — but **the protocol did not change**. Topic prefixes are still `msgrpc/v1` and `msgrpc/v2`, introspection is still the `msgrpc` namespace, and MQTT 5 user properties still carry the `mr-` prefix: renaming those would strand every deployed peer for no engineering gain.
 

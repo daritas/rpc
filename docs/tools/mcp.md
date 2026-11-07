@@ -272,11 +272,11 @@ The published image comes in two flavours, because the CLI is two things.
 
 | | |
 | --- | --- |
-| `ghcr.io/source-repo/rpc-cli` | what goes near a plant: the commands that are infrastructure, and nothing else in the image |
-| `ghcr.io/source-repo/rpc-cli:dev` | the same CLI plus `npm` and `python3`, which `--scripts` and the Python half of `--allow-exec` need in order to work at all |
+| `ghcr.io/daritas/rpc-cli` | what goes near a plant: the commands that are infrastructure, and nothing else in the image |
+| `ghcr.io/daritas/rpc-cli:dev` | the same CLI plus `npm` and `python3`, which `--scripts` and the Python half of `--allow-exec` need in order to work at all |
 
 ```
-docker run --rm -v "$PWD/scripts:/scripts" ghcr.io/source-repo/rpc-cli:dev \
+docker run --rm -v "$PWD/scripts:/scripts" ghcr.io/daritas/rpc-cli:dev \
     mcp --hub http://bus:7843 --scripts /scripts
 ```
 

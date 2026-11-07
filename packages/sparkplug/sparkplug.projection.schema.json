@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://source-repo.github.io/rpc/schemas/sparkplug.projection.schema.json",
+    "$id": "https://rpc.daritas.com/schemas/sparkplug.projection.schema.json",
     "title": "Source RPC Sparkplug projection",
     "type": "object",
     "additionalProperties": false,

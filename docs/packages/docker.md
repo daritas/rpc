@@ -14,4 +14,4 @@ npm install @source-repo/docker
 
 Reachability is published as a fact rather than thrown: a host without Docker is an ordinary thing for this to run on, and it says so with a message naming what to check.
 
-Full documentation: the [package README](https://github.com/source-repo/rpc/blob/main/packages/docker/README.md). On npm: [@source-repo/docker](https://www.npmjs.com/package/@source-repo/docker).
+Full documentation: the [package README](https://github.com/daritas/rpc/blob/main/packages/docker/README.md). On npm: [@source-repo/docker](https://www.npmjs.com/package/@source-repo/docker).

@@ -1,10 +1,10 @@
 # @source-repo/queue
 
-A lease-based work queue for [Source RPC](https://github.com/source-repo/rpc) networks. Every-value semantics: work that must not be lost, delivered to one consumer at a time, with leases, retries, dead letters, and capacity that refuses rather than drops. The same program runs unchanged over socket.io and MQTT 5, because the queue is an ordinary Source RPC service — the transport never shows through the contract.
+A lease-based work queue for [Source RPC](https://github.com/daritas/rpc) networks. Every-value semantics: work that must not be lost, delivered to one consumer at a time, with leases, retries, dead letters, and capacity that refuses rather than drops. The same program runs unchanged over socket.io and MQTT 5, because the queue is an ordinary Source RPC service — the transport never shows through the contract.
 
 This is the ecosystem's first tool node: its own package with its own version, deliberately *not* bound to the rpc/rpc-cli versions-together rule, built against the library's public APIs only.
 
-**Documentation: [source-repo.github.io/rpc](https://source-repo.github.io/rpc/)** — the library guide this queue builds on, with search.
+**Documentation: [rpc.daritas.com](https://rpc.daritas.com/)** — the library guide this queue builds on, with search.
 
 ## The one paragraph to read before trusting it
 

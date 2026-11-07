@@ -12,4 +12,4 @@ await using var transport = new SocketIoClientTransport("http://plant:3000", opt
 
 A socket.io namespace goes in the URL (`http://plant:3000/cell-3`); `EnginePath` is engine.io's endpoint and is rarely what you want.
 
-Needs [`SourceRpc`](https://www.nuget.org/packages/SourceRpc), which comes with it. Documentation: [github.com/source-repo/rpc](https://github.com/source-repo/rpc/blob/main/packages/csharp/README.md).
+Needs [`SourceRpc`](https://www.nuget.org/packages/SourceRpc), which comes with it. Documentation: [github.com/daritas/rpc](https://github.com/daritas/rpc/blob/main/packages/csharp/README.md).

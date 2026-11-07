@@ -143,4 +143,4 @@ docker compose -f docker-compose/docker-compose.yml up -d
 
 Point them at a different broker with `MSGRPC_TEST_BROKER=mqtt://host:1883`. The port is part of that, so a broker already listening on another one saves starting a second beside it — `MSGRPC_TEST_BROKER=mqtt://localhost:1884 npm test` for a mosquitto on 1884. The tests connect anonymously, as the broker in that compose file allows, and a mosquitto needs `allow_anonymous true` to match; against one that authenticates, put the account in the URL — `MSGRPC_TEST_BROKER=mqtt://user:password@host:1883`.
 
-[`examples/`](https://github.com/source-repo/rpc/tree/main/packages/rpc/examples) is a small plant service showing the 2.0 idioms: `@rpcNamespace` and `@rpc`, an extracted contract, and a server that validates against it and exposes introspection.
+[`examples/`](https://github.com/daritas/rpc/tree/main/packages/rpc/examples) is a small plant service showing the 2.0 idioms: `@rpcNamespace` and `@rpc`, an extracted contract, and a server that validates against it and exposes introspection.

@@ -118,7 +118,7 @@ source-rpc call filler filling.dispense 500 --idempotency-key batch-4417 --hub h
 
 Run that twice and the batch is dispensed once; the second call is answered from the record of the first. Run it without the key and it is dispensed twice, which is the correct reading of two commands that did not claim to be one.
 
-It only means anything for a method declared `non-repeatable-command` on a server given a durable idempotency store — see [Commands](https://github.com/source-repo/rpc/tree/main/packages/rpc#commands). Without a store the key is carried and ignored, so a retry loop in a shell script is not protection by itself.
+It only means anything for a method declared `non-repeatable-command` on a server given a durable idempotency store — see [Commands](https://github.com/daritas/rpc/tree/main/packages/rpc#commands). Without a store the key is carried and ignored, so a retry loop in a shell script is not protection by itself.
 
 ## Declaring the contract
 
@@ -529,19 +529,19 @@ Two consequences worth knowing. The tap is gated with everything else, so `bus.t
 
 ### In a container
 
-The broker is the piece of Source RPC that is infrastructure rather than a tool someone is holding, which is what makes it worth an image. [`Dockerfile`](https://github.com/source-repo/rpc/blob/main/packages/cli/Dockerfile) builds one whose entrypoint is the whole CLI, so a single image is a bus, a console, an MCP server or a recorder depending on the command:
+The broker is the piece of Source RPC that is infrastructure rather than a tool someone is holding, which is what makes it worth an image. [`Dockerfile`](https://github.com/daritas/rpc/blob/main/packages/cli/Dockerfile) builds one whose entrypoint is the whole CLI, so a single image is a bus, a console, an MCP server or a recorder depending on the command:
 
 ```
 docker run -d -p 7843:7843 \
     -e SOURCE_RPC_TOKENS='{"3f9a…":"plantServer"}' \
-    ghcr.io/source-repo/rpc-cli:4           # no command: the default is the broker, bound wide -
+    ghcr.io/daritas/rpc-cli:4           # no command: the default is the broker, bound wide -
                                             # inside a container the -p mapping decides reachability
 
-docker run --rm -e SOURCE_RPC_TOKEN=3f9a… ghcr.io/source-repo/rpc-cli:4 \
+docker run --rm -e SOURCE_RPC_TOKEN=3f9a… ghcr.io/daritas/rpc-cli:4 \
     peers --hub http://bus:7843 --name plantServer        # any other command, same image
 ```
 
-[`docker-compose/network.yml`](https://github.com/source-repo/rpc/blob/main/docker-compose/network.yml) runs the whole thing — an MQTT broker, the bus, and a console watching both — which is the shape a plant deploys:
+[`docker-compose/network.yml`](https://github.com/daritas/rpc/blob/main/docker-compose/network.yml) runs the whole thing — an MQTT broker, the bus, and a console watching both — which is the shape a plant deploys:
 
 ```
 echo "CONSOLE_TOKEN=$(openssl rand -hex 32)" > docker-compose/.env

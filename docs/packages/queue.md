@@ -11,4 +11,4 @@ npm install @source-repo/queue
 - **Transport-neutral** — the same program over in-process, socket.io and MQTT 5; the transport never shows through the contract.
 - **Tasks carry context** — captured snapshots travel verbatim; `latest` tasks resolve the source host's context when execution starts, and an unresolvable `latest` dead-letters rather than running context-blind.
 
-Full documentation: the [package README](https://github.com/source-repo/rpc/blob/main/packages/queue/README.md). On npm: [@source-repo/queue](https://www.npmjs.com/package/@source-repo/queue).
+Full documentation: the [package README](https://github.com/daritas/rpc/blob/main/packages/queue/README.md). On npm: [@source-repo/queue](https://www.npmjs.com/package/@source-repo/queue).

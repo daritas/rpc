@@ -9,8 +9,11 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
     title: 'Source RPC',
     description: 'TypeScript RPC for a network of peers — browsers, Node services and plant devices — over socket.io and MQTT 5',
-    // Served as a project page: source-repo.github.io/rpc/
-    base: '/rpc/',
+    // Served on its own domain, rpc.daritas.com, so the site sits at the root. This was '/rpc/'
+    // while it was a project page at <org>.github.io/rpc/ — the custom domain exists precisely so
+    // that moving the repository between organisations stops moving the documentation with it.
+    // docs/public/CNAME is what makes the domain stick to a workflow-built deployment.
+    base: '/',
     lastUpdated: true,
     // The design documents link to working material in notes/, which is deliberately not on the
     // site. Those links resolve on GitHub; the checker would fail the build over them.
@@ -104,9 +107,9 @@ export default defineConfig({
         outline: { level: [2, 3] },
         // Local search, bundled: the site makes no external requests, like everything else here.
         search: { provider: 'local' },
-        socialLinks: [{ icon: 'github', link: 'https://github.com/source-repo/rpc' }],
+        socialLinks: [{ icon: 'github', link: 'https://github.com/daritas/rpc' }],
         editLink: {
-            pattern: 'https://github.com/source-repo/rpc/edit/main/docs/:path',
+            pattern: 'https://github.com/daritas/rpc/edit/main/docs/:path',
             text: 'Edit this page on GitHub'
         },
         footer: {

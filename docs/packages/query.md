@@ -13,4 +13,4 @@ npm install @source-repo/query
 - **A deadline is a budget across attempts** — every attempt gets what remains of what the caller declared, and one that arrives with none left is refused rather than sent.
 - **Not a browser thing** — `@tanstack/query-core` is framework-agnostic, so two Node services pulling from a third get the same dedup, arithmetic and freshness.
 
-Full documentation: the [package README](https://github.com/source-repo/rpc/blob/main/packages/query/README.md). On npm: [@source-repo/query](https://www.npmjs.com/package/@source-repo/query).
+Full documentation: the [package README](https://github.com/daritas/rpc/blob/main/packages/query/README.md). On npm: [@source-repo/query](https://www.npmjs.com/package/@source-repo/query).

@@ -15,4 +15,4 @@ app.MapSourceRpc("/rpc");
 
 A TypeScript peer reaches it with `@source-repo/signalr`; both speak the same flat frame, so a call means the same thing on either side and only the spelling differs.
 
-Needs [`SourceRpc`](https://www.nuget.org/packages/SourceRpc), which comes with it. Documentation: [github.com/source-repo/rpc](https://github.com/source-repo/rpc/blob/main/packages/csharp/README.md).
+Needs [`SourceRpc`](https://www.nuget.org/packages/SourceRpc), which comes with it. Documentation: [github.com/daritas/rpc](https://github.com/daritas/rpc/blob/main/packages/csharp/README.md).
