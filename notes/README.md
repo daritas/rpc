@@ -21,3 +21,98 @@ Also here: [ways in](ways-in.md) — showing a node's other interfaces in the co
 Also here: [a knowledge system over Source RPC](knowledge-system-generality/source-rpc-general-knowledge-system-design-spec.md) and [Linear as its first adapter](knowledge-system-generality/source-rpc-linear-knowledge-adapter-design-spec.md) — proposed, not built, and kept mainly for the discipline in them: the rule that Source RPC transports and governs a knowledge capability while a separate provider owns knowledge semantics, and an anti-monster gate every proposed addition has to pass before it may enter the core. The two extensions they ask for are small and land on a seam the library already declared — `shape: 'tree'` says in its own comment that a tree is not served yet. A review against the implementation is appended to the first one.
 
 Also here: field-trial feedback, starting with [the first fresh-agent session](session-feedback-2026-08-01.md) — a Claude with no prior knowledge of the project working the network through the MCP server, whose findings were filed into Linear.
+
+---
+
+## The rest, grouped
+
+The prose above covers the documents whose status a reader most needs to know before trusting
+them. These are the other twenty-nine — about 137,000 words that nothing in this repository
+named until 2026-11-09. They are grouped by what they are, because that is the thing most worth
+knowing before opening one: a proposed spec, a review of a spec, a research comparison, or
+scrubbed reading notes.
+
+### Proposed design specifications
+
+Written as specs, with a status line. None of them is a description of code — check the status
+line and then check the package.
+
+| | |
+|---|---|
+| [`extending-rpc-design/source-rpc-next-design-spec.md`](extending-rpc-design/source-rpc-next-design-spec.md) | Source RPC 4.1–4.2. **Proposed.** |
+| [`extending-rpc-design/source-rpc-distributed-context-topology-design-spec.md`](extending-rpc-design/source-rpc-distributed-context-topology-design-spec.md) | Distributed topology, context and shared state. **Proposed.** |
+| [`ai-boundary/source-rpc-ai-boundary-design-spec.md`](ai-boundary/source-rpc-ai-boundary-design-spec.md) | The AI boundary: principals, grants, security administration. **Proposed.** This is where `aiGrants` is specified — a document a reviewer can diff, closed by default. |
+| [`Sparkplug/source-rpc-sparkplug-projection-design-spec.md`](Sparkplug/source-rpc-sparkplug-projection-design-spec.md) | The Sparkplug B projection and the plant boundary. **Proposed.** The decision it implements — *Sparkplug outside; Source RPC inside* — is canon in the handbook. |
+| [`Sparkplug/source-rpc-sparkplug-relay-design-spec.md`](Sparkplug/source-rpc-sparkplug-relay-design-spec.md) | The relay over Sparkplug B, a private tunnel named as one. **Proposed and deliberately deferred** — not built until a paying deployment states the need. |
+| [`extending-rpc-design/deferred-results-proposal.md`](extending-rpc-design/deferred-results-proposal.md) | Returning a long job's result to the caller that asked for it: namespace withdrawal, deferred replies, two smaller fixes found on the way. |
+
+### Reviews of those specs
+
+Adversarial reads, kept for the findings. They open with a verdict rather than a title, which is
+why they look like fragments in a file listing.
+
+| | |
+|---|---|
+| [`ai-boundary/source-rpc-ai-boundary-design-spec-OpenAI-review.md`](ai-boundary/source-rpc-ai-boundary-design-spec-OpenAI-review.md) | Review of the AI-boundary spec. Opens: *"the strongest Source RPC architecture documents so far"* — then the objections. |
+| [`extending-rpc-design/source-rpc-distributed-context-topology-design-spec-review-review.md`](extending-rpc-design/source-rpc-distributed-context-topology-design-spec-review-review.md) | A review **of a review** — the second-order read of the topology spec's developer review. The name is accurate, not a typo. |
+| [`csharp-and-rpc-review.md`](csharp-and-rpc-review.md) | A framework review pinned to commit `03838ba`, when `@source-repo/rpc` was 5.0.1. Read the pin: the repository has moved. |
+| [`openai-msgrpc-review.md`](openai-msgrpc-review.md) | Whether to keep or replace the framework. Conclusion: **keep and harden.** |
+| [`ChatGPT-RPC task DEV-379 review.md`](ChatGPT-RPC%20task%20DEV-379%20review.md) | A task review. A chat export; its filename carries spaces. |
+
+### Research comparisons
+
+Where an outside library or product was studied to decide what to take.
+
+| | |
+|---|---|
+| [`tanstack-query-comparison.md`](tanstack-query-comparison.md) | What TanStack Query fakes, and where this does the same thing one level down. The library README already sends a browser-plus-one-backend reader to tRPC, so this one earns its place. |
+| [`tanstack-query-comparison-review.md`](tanstack-query-comparison-review.md) | The review of it. Its praised insight is the demand-driven-query distinction. |
+| [`state-layer-plan.md`](state-layer-plan.md) | **What to build after those two**, ordered by what has to be true first. The largest live note here. |
+| [`Sparkplug/OpenAI chat about MQTT Sparkplug B.md`](Sparkplug/OpenAI%20chat%20about%20MQTT%20Sparkplug%20B.md) | The 2026-08-01 conversation behind the Sparkplug decision. A chat export; spaces in the filename. |
+| [`webport-scada-comparisons/process-value-attributes.md`](webport-scada-comparisons/process-value-attributes.md) | How a SCADA product models a tag's attributes. |
+| [`webport-scada-comparisons/process-value-scoping.md`](webport-scada-comparisons/process-value-scoping.md) | How it scopes process values — prefix-based binding and the alternatives. |
+| [`webport-scada-comparisons/symbol-library.md`](webport-scada-comparisons/symbol-library.md) | Where standard suffixes and their matching rules are defined. |
+
+### Working notes
+
+Short, specific, and each written because something in the code was about to be decided wrongly.
+
+| | |
+|---|---|
+| [`setting-state-from-a-console.md`](setting-state-from-a-console.md) | Why inferring a setter from a method's name is the wrong mechanism — prompted by what the context console was doing and should stop doing. |
+| [`component-snapshot-patches.md`](component-snapshot-patches.md) | The component channel sends state whole, deliberately. What sending a delta would take, and why the usual objection does not apply. |
+| [`console-security.md`](console-security.md) | Making the existing security mechanisms visible, explainable and testable from the generic console. |
+| [`network-scope-data-provider.md`](network-scope-data-provider.md) | A network scope over `DataProvider` resources, reusing the scope-tree and leaf-grid arrangement. |
+| [`new-stuff.md`](new-stuff.md) | A July wish-list — reflection for runtime type checking, a "swagger call", a scanner with a dialog. Kept because **most of it was built**: `msgrpc.describe` is that swagger call and the console is the scanner beside it, as [`ways-in.md`](ways-in.md) records. It sat at the repository root as `new stuff.md` until 2026-11-09, where a space in the filename made it both unsearchable and the first thing a visitor saw. |
+| [`tooling-roadmap.md`](tooling-roadmap.md) | What the CLI and console could become for testing and debugging a network of devices, written after a pass over the existing commands and the MQTT tools. |
+
+### `rpc-admin-capabilities/` — scrubbed reading notes
+
+Design input taken from studying React Admin. **Scrubbed**, and the folder's own framing is the
+thing to keep: the commercial application layer above Source RPC is not this repository's
+business. Read them for ideas about what a generic admin surface owes a user, not as a plan.
+
+| | |
+|---|---|
+| [`rpc-admin-capabilities-summary.md`](rpc-admin-capabilities/rpc-admin-capabilities-summary.md) | The summary, and the case for `@source-repo/react`. |
+| [`making-ui-generally-useful.md`](rpc-admin-capabilities/making-ui-generally-useful.md) | What makes a generic UI generally useful rather than merely generic. |
+| [`react-admin-useful-ideas.md`](rpc-admin-capabilities/react-admin-useful-ideas.md) | Feature-by-feature reading notes. |
+| [`react-admin-enterprise-edition-useful-ideas.md`](rpc-admin-capabilities/react-admin-enterprise-edition-useful-ideas.md) | The same for the enterprise edition. |
+
+### `archived/`
+
+Superseded, kept for the reasoning. The distinction from the rest of `notes/` is worth holding:
+everything else here records how a live decision was reached; these two record how a decision that
+has since been *replaced* was reached.
+
+| | |
+|---|---|
+| [`archived/extensions-and-ecosystem-review.md`](archived/extensions-and-ecosystem-review.md) | The review that drove the revision in [`../docs/extensions-and-ecosystem.md`](../docs/extensions-and-ecosystem.md), kept for the reasoning behind each resolution. |
+| [`archived/rpc-extensions-chat.md`](archived/rpc-extensions-chat.md) | 19,700 words — the largest file in the repository after the changelog. A conversation about extending the framework: properties on a remote class, server-driven UI, scripted nodes, and how far toward the metal the model can be pushed. |
+
+---
+
+**A document in `notes/` that this file does not name is a document nobody will find.** Add it
+here when you add it there — a line is enough, and saying which of the five kinds it is matters
+more than summarising it.
+

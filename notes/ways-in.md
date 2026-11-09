@@ -10,7 +10,7 @@ So: can the same UI hold those, and what is the shape that does not make a mess?
 
 ## What is already here
 
-`msgrpc.describe` **is** the "swagger call" that `new stuff.md` asked for in July, and the console is the scanner-with-a-dialog beside it. Both were built as this library's own shape rather than borrowed: `contracts.md` says why, and it is not squeamishness — *"OpenAPI is HTTP-shaped and cannot describe a server pushing events; AsyncAPI models everything as a channel"*. Nothing here speaks HTTP as a protocol, and nothing here should start.
+`msgrpc.describe` **is** the "swagger call" that [`new-stuff.md`](new-stuff.md) asked for in July (it sat at the repository root as `new stuff.md` until 2026-11-09), and the console is the scanner-with-a-dialog beside it. Both were built as this library's own shape rather than borrowed: `contracts.md` says why, and it is not squeamishness — *"OpenAPI is HTTP-shaped and cannot describe a server pushing events; AsyncAPI models everything as a channel"*. Nothing here speaks HTTP as a protocol, and nothing here should start.
 
 `ObjectBinding` already answers most of the modelling question, and its own documentation states the case exactly: *"An aspect says where does this appear when I look at the system this way; a binding says through what interface can I observe or act on it. A pump has one identity, several aspects, and may be reachable over OPC UA, over Sparkplug and as a Source RPC component at the same time. **None of those is a structure.**"* `BindingTarget` already carries `{ type: 'external', system, id, endpoint? }`.
 
